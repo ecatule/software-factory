@@ -1,0 +1,21 @@
+{
+  "name": "@software-factory/ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint \"src/**/*.tsx\""
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "@tanstack/react-table": "^8.20.5",
+    "react-hook-form": "^7.53.0",
+    "react-markdown": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.5"
+  }
+}

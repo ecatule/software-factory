@@ -1,0 +1,29 @@
+{
+  "name": "software-factory",
+  "private": true,
+  "version": "0.1.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "devDependencies": {
+    "@types/node": "^20.16.5",
+    "@typescript-eslint/eslint-plugin": "7",
+    "@typescript-eslint/parser": "7",
+    "eslint": "8",
+    "eslint-config-prettier": "9",
+    "eslint-plugin-react": "7",
+    "eslint-plugin-react-hooks": "4",
+    "prettier": "3",
+    "typescript": "^5.5.4"
+  },
+  "scripts": {
+    "dev:api": "pnpm --filter @software-factory/api start:dev",
+    "dev:web": "pnpm --filter @software-factory/web dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "prisma:migrate": "pnpm --filter @software-factory/api prisma migrate deploy",
+    "prisma:seed": "pnpm --filter @software-factory/api prisma db seed"
+  }
+}

@@ -1,0 +1,691 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// NOTE: every model below shares the mandatory columns documented in
+// database/migrations/README.md (id, st_ativo, created_at, updated_at,
+// deleted_at, created_by, updated_by, version). Physical deletes are
+// blocked at the Prisma Client layer, not by the schema — see
+// apps/api/src/common/prisma/soft-delete.extension.ts.
+
+// ---------------------------------------------------------------------------
+// Workflow (spec FR-004 / FR-005): the data-driven state machine every
+// Demand.status moves through. Kept separate from a hardcoded enum so new
+// stages (QA, HOMOLOGATION, ...) can be added without touching in-flight
+// demands, per the constitution's Extensibility principle.
+// ---------------------------------------------------------------------------
+
+model Workflow {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  name      String
+  projectId String?   @map("project_id") @db.Uuid
+
+  stages      WorkflowStage[]
+  transitions WorkflowTransition[]
+
+  @@map("workflows")
+}
+
+model WorkflowStage {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  workflowId String   @map("workflow_id") @db.Uuid
+  workflow   Workflow @relation(fields: [workflowId], references: [id])
+  key        String
+  order      Int
+
+  transitionsFrom WorkflowTransition[] @relation("TransitionFromStage")
+  transitionsTo   WorkflowTransition[] @relation("TransitionToStage")
+
+  @@unique([workflowId, key])
+  @@map("workflow_stages")
+}
+
+model WorkflowTransition {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  workflowId  String        @map("workflow_id") @db.Uuid
+  workflow    Workflow      @relation(fields: [workflowId], references: [id])
+  fromStageId String        @map("from_stage_id") @db.Uuid
+  fromStage   WorkflowStage @relation("TransitionFromStage", fields: [fromStageId], references: [id])
+  toStageId   String        @map("to_stage_id") @db.Uuid
+  toStage     WorkflowStage @relation("TransitionToStage", fields: [toStageId], references: [id])
+  condition   String?
+
+  @@map("workflow_transitions")
+}
+
+// ---------------------------------------------------------------------------
+// Provider / ProviderConfiguration (spec FR-003/FR-008/FR-009/FR-018): the
+// persisted, per-project (or platform-default) configuration behind each
+// replaceable Provider interface (DemandProvider, LLMProvider, SDDProvider,
+// CodeRepositoryProvider, StorageProvider). Secrets are never stored in
+// `settings` — only references resolved from environment/secret store at
+// runtime (constitution: no credential in code or data).
+// ---------------------------------------------------------------------------
+
+enum ProviderKind {
+  DEMAND_SOURCE
+  CODE_REPOSITORY
+  LLM
+  SDD
+  STORAGE
+}
+
+model Provider {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  key  String       @unique
+  kind ProviderKind
+
+  configurations ProviderConfiguration[]
+
+  @@map("providers")
+}
+
+model ProviderConfiguration {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  providerId    String   @map("provider_id") @db.Uuid
+  provider      Provider @relation(fields: [providerId], references: [id])
+  projectId     String?  @map("project_id") @db.Uuid
+  pipelineStage String?  @map("pipeline_stage")
+  settings      Json     @default("{}")
+
+  @@map("provider_configurations")
+}
+
+// ---------------------------------------------------------------------------
+// Identity: User / Role / Permission (spec FR-026 RBAC). The concrete role
+// and permission catalog is seeded data (see prisma/seed.ts), not hardcoded
+// here — the exact matrix is intentionally deferred per spec.md Assumptions.
+// ---------------------------------------------------------------------------
+
+model User {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  name                     String
+  email                    String  @unique
+  identityProviderSubject  String? @map("identity_provider_subject")
+
+  roles UserRole[]
+
+  @@map("users")
+}
+
+model Role {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  name        String @unique
+  description String?
+
+  users       UserRole[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  name        String @unique
+  description String?
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model UserRole {
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id])
+  roleId String @map("role_id") @db.Uuid
+  role   Role   @relation(fields: [roleId], references: [id])
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId       String     @map("role_id") @db.Uuid
+  role         Role       @relation(fields: [roleId], references: [id])
+  permissionId String     @map("permission_id") @db.Uuid
+  permission   Permission @relation(fields: [permissionId], references: [id])
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// ---------------------------------------------------------------------------
+// AuditLog (spec FR-025): written by the global AuditInterceptor for every
+// write operation, plus explicitly by services for domain events that aren't
+// a direct HTTP write (e.g. a BullMQ worker completing an AgentExecution).
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  actorUserId          String?  @map("actor_user_id") @db.Uuid
+  actorAgentExecutionId String? @map("actor_agent_execution_id") @db.Uuid
+  action               String
+  entityType           String   @map("entity_type")
+  entityId             String?  @map("entity_id")
+  before               Json?
+  after                Json?
+  correlationId        String   @map("correlation_id")
+  occurredAt           DateTime @default(now()) @map("occurred_at")
+
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Client / Project: prerequisites for every Demand.
+// ---------------------------------------------------------------------------
+
+model Client {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  name               String
+  externalReference  String? @map("external_reference")
+
+  projects Project[]
+  demands  Demand[]
+
+  @@map("clients")
+}
+
+model Project {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  clientId            String   @map("client_id") @db.Uuid
+  client               Client   @relation(fields: [clientId], references: [id])
+  name                 String
+  technologies         String[]
+  branchNamingPolicy   String   @default("<type>/<client>/<ticket>-<slug>") @map("branch_naming_policy")
+  requiredTestSuites   String[] @map("required_test_suites")
+
+  demands Demand[]
+
+  @@map("projects")
+}
+
+// ---------------------------------------------------------------------------
+// Demand (spec FR-001/FR-002/FR-028): the central unit of work.
+// ---------------------------------------------------------------------------
+
+enum DemandType {
+  BUG
+  FEATURE
+  IMPROVEMENT
+  TASK
+  TECHNICAL_DEBT
+}
+
+model Demand {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  externalId        String     @map("external_id")
+  origin            String
+  title             String
+  description       String
+  type              DemandType
+  priority          String
+  clientId          String     @map("client_id") @db.Uuid
+  client            Client     @relation(fields: [clientId], references: [id])
+  projectId         String     @map("project_id") @db.Uuid
+  project           Project    @relation(fields: [projectId], references: [id])
+  status            String     @default("NEW")
+  responsibleUserId String?    @map("responsible_user_id") @db.Uuid
+
+  // spec FR-028: re-import of an already-known (origin, external_id) MUST be
+  // rejected (409), never silently update or duplicate.
+  @@unique([origin, externalId])
+  @@map("demands")
+}
+
+// ---------------------------------------------------------------------------
+// Agent / AgentExecution (spec FR-006/FR-007): a run of an AI actor
+// (SpecificationAgent, later DeveloperAgent) against a demand.
+// ---------------------------------------------------------------------------
+
+enum AgentExecutionStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model Agent {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  name String
+  type String
+
+  executions AgentExecution[]
+
+  @@map("agents")
+}
+
+model AgentExecution {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  agentId                 String               @map("agent_id") @db.Uuid
+  agent                   Agent                @relation(fields: [agentId], references: [id])
+  demandId                String               @map("demand_id") @db.Uuid
+  providerConfigurationId String?              @map("provider_configuration_id") @db.Uuid
+  pipelineStage           String?              @map("pipeline_stage")
+  status                  AgentExecutionStatus @default(QUEUED)
+  startedAt               DateTime?            @map("started_at")
+  finishedAt              DateTime?            @map("finished_at")
+  input                   Json                 @default("{}")
+  output                  Json?
+  error                   String?
+
+  specificationVersions SpecificationVersion[]
+
+  @@map("agent_executions")
+}
+
+// ---------------------------------------------------------------------------
+// Specification / SpecificationVersion (spec FR-006/FR-010/FR-011/FR-012).
+// ---------------------------------------------------------------------------
+
+enum SpecDocumentType {
+  SPEC
+  PLAN
+  RESEARCH
+  DATA_MODEL
+  QUICKSTART
+  CHECKLIST
+  TASKS
+  ANALYSIS
+}
+
+model Specification {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  demandId         String           @map("demand_id") @db.Uuid
+  documentType     SpecDocumentType @map("document_type")
+  currentVersionId String?          @map("current_version_id") @db.Uuid
+
+  versions SpecificationVersion[] @relation("SpecificationToVersions")
+
+  @@unique([demandId, documentType])
+  @@map("specifications")
+}
+
+model SpecificationVersion {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  specificationId String         @map("specification_id") @db.Uuid
+  specification   Specification  @relation("SpecificationToVersions", fields: [specificationId], references: [id])
+  versionNumber   Int            @map("version_number")
+  content         String
+  authorUserId    String?        @map("author_user_id") @db.Uuid
+  agentId         String?        @map("agent_id") @db.Uuid
+  llmProviderConfigurationId String? @map("llm_provider_configuration_id") @db.Uuid
+  executionId     String?        @map("execution_id") @db.Uuid
+  execution       AgentExecution? @relation(fields: [executionId], references: [id])
+  reason          String?
+
+  @@unique([specificationId, versionNumber])
+  @@map("specification_versions")
+}
+
+// ---------------------------------------------------------------------------
+// DemandWorkspace (spec FR-013/FR-014): the demand's isolated working area,
+// created once its plan is approved. Full Artifact/ArtifactFile modeling
+// lands in the User Story 4 slice; this minimal shape exists early because
+// the execution worker (User Story 2) needs to resolve a workspace path.
+// ---------------------------------------------------------------------------
+
+model DemandWorkspace {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  demandId String @unique @map("demand_id") @db.Uuid
+  path     String
+  status   String @default("CREATED")
+
+  @@map("demand_workspaces")
+}
+
+// ---------------------------------------------------------------------------
+// Artifact / ArtifactFile (spec FR-015/FR-016/FR-017): the logical software
+// components a demand touches, and the files impacted per artifact.
+// ---------------------------------------------------------------------------
+
+enum ArtifactFileChangeType {
+  MODIFIED
+  ADDED
+  REMOVED
+  DISCOVERED
+}
+
+model Artifact {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  demandId    String  @map("demand_id") @db.Uuid
+  name        String
+  type        String
+  description String?
+  technology  String?
+  path        String?
+  status      String  @default("PLANNED")
+
+  files        ArtifactFile[]
+  repositories ArtifactRepository[]
+
+  @@map("artifacts")
+}
+
+// spec FR-016: N:N, not 1:1 — an artifact may span multiple repositories and
+// a repository may back multiple artifacts (Repository model lands in US6;
+// referenced here by id only until then).
+model ArtifactRepository {
+  artifactId   String @map("artifact_id") @db.Uuid
+  artifact     Artifact @relation(fields: [artifactId], references: [id])
+  repositoryId String @map("repository_id") @db.Uuid
+
+  @@id([artifactId, repositoryId])
+  @@map("artifact_repositories")
+}
+
+model ArtifactFile {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  artifactId String                 @map("artifact_id") @db.Uuid
+  artifact   Artifact               @relation(fields: [artifactId], references: [id])
+  filePath   String                 @map("file_path")
+  changeType ArtifactFileChangeType @map("change_type")
+  reason     String?
+  status     String                 @default("PENDING")
+
+  @@map("artifact_files")
+}
+
+// ---------------------------------------------------------------------------
+// Repository / Branch (spec FR-018/FR-019/US6): Git-level entities. Commit
+// and PullRequest are added in the US8 slice below.
+// ---------------------------------------------------------------------------
+
+model Repository {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  projectId               String  @map("project_id") @db.Uuid
+  providerConfigurationId String? @map("provider_configuration_id") @db.Uuid
+  externalReference       String  @map("external_reference")
+
+  branches Branch[]
+
+  @@map("repositories")
+}
+
+model Branch {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  repositoryId String     @map("repository_id") @db.Uuid
+  repository   Repository @relation(fields: [repositoryId], references: [id])
+  demandId     String     @map("demand_id") @db.Uuid
+  name         String
+
+  // spec Edge Cases: multiple artifacts sharing one repository share ONE
+  // branch — enforced here, not assumed by callers.
+  @@unique([repositoryId, demandId])
+  @@map("branches")
+}
+
+// ---------------------------------------------------------------------------
+// TestExecution / TestResult (spec FR-020/FR-021): the Test Gate.
+// ---------------------------------------------------------------------------
+
+enum TestExecutionStatus {
+  RUNNING
+  PASSED
+  FAILED
+}
+
+model TestExecution {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  demandId   String              @map("demand_id") @db.Uuid
+  projectId  String              @map("project_id") @db.Uuid
+  suite      String
+  command    String
+  status     TestExecutionStatus @default(RUNNING)
+  startedAt  DateTime            @default(now()) @map("started_at")
+  finishedAt DateTime?           @map("finished_at")
+  durationMs Int?                @map("duration_ms")
+  coverage   Float?
+  output     String?
+  error      String?
+
+  result TestResult?
+
+  @@map("test_executions")
+}
+
+model TestResult {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  testExecutionId String        @unique @map("test_execution_id") @db.Uuid
+  testExecution   TestExecution @relation(fields: [testExecutionId], references: [id])
+  passedCount     Int           @map("passed_count")
+  failedCount     Int           @map("failed_count")
+  skippedCount    Int           @map("skipped_count")
+
+  @@map("test_results")
+}
+
+// ---------------------------------------------------------------------------
+// Commit / PullRequest (spec FR-022/FR-023).
+// ---------------------------------------------------------------------------
+
+model Commit {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  branchId        String  @map("branch_id") @db.Uuid
+  sha             String
+  demandId        String  @map("demand_id") @db.Uuid
+  artifactId      String  @map("artifact_id") @db.Uuid
+  taskReference   String? @map("task_reference")
+  testExecutionId String  @map("test_execution_id") @db.Uuid
+  agentExecutionId String? @map("agent_execution_id") @db.Uuid
+
+  @@map("commits")
+}
+
+model PullRequest {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  repositoryId       String @map("repository_id") @db.Uuid
+  demandId           String @map("demand_id") @db.Uuid
+  externalReference  String @map("external_reference")
+  title              String
+  description        String
+  status             String @default("OPEN")
+
+  @@map("pull_requests")
+}

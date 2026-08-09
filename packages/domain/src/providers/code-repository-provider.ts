@@ -1,0 +1,52 @@
+export interface RepositoryRef {
+  externalReference: string;
+}
+
+export interface BranchRef {
+  name: string;
+}
+
+export interface FileRef {
+  path: string;
+  content: string;
+}
+
+export interface CommitRef {
+  sha: string;
+}
+
+export interface PullRequestRef {
+  externalReference: string;
+  url: string;
+  status: string;
+}
+
+export interface CheckRef {
+  name: string;
+  status: string;
+}
+
+/**
+ * spec FR-018: the platform's only integration point with a code host
+ * (GitHub first). Used by the Developer Agent (US6) and the commit/PR flow
+ * (US8) — never called directly from apps/web.
+ */
+export interface CodeRepositoryProvider {
+  getRepository(externalReference: string): Promise<RepositoryRef>;
+  cloneRepository(externalReference: string, targetPath: string): Promise<void>;
+  createBranch(externalReference: string, branchName: string): Promise<BranchRef>;
+  getFile(externalReference: string, branch: string, path: string): Promise<FileRef>;
+  searchCode(externalReference: string, query: string): Promise<FileRef[]>;
+  commit(externalReference: string, branch: string, message: string): Promise<CommitRef>;
+  push(externalReference: string, branch: string): Promise<void>;
+  createPullRequest(
+    externalReference: string,
+    branch: string,
+    title: string,
+    description: string,
+  ): Promise<PullRequestRef>;
+  getPullRequest(externalReference: string, prReference: string): Promise<PullRequestRef>;
+  getChecks(externalReference: string, prReference: string): Promise<CheckRef[]>;
+}
+
+export const CODE_REPOSITORY_PROVIDER = Symbol("CODE_REPOSITORY_PROVIDER");

@@ -1,0 +1,15 @@
+{
+  "name": "@software-factory/infrastructure",
+  "private": true,
+  "version": "0.1.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint \"src/**/*.ts\""
+  },
+  "dependencies": {
+    "@software-factory/domain": "workspace:*",
+    "@software-factory/config": "workspace:*"
+  }
+}

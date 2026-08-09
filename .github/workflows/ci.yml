@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-build-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: factory
+          POSTGRES_PASSWORD: factory
+          POSTGRES_DB: software_factory
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U factory"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://factory:factory@localhost:5432/software_factory
+      REDIS_URL: redis://localhost:6379
+      MINIO_ENDPOINT: localhost
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET: software-factory-artifacts
+      JWT_ACCESS_SECRET: ci-secret
+      JWT_REFRESH_SECRET: ci-secret-refresh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prisma generate
+        run: pnpm --filter @software-factory/api exec prisma generate
+
+      - name: Lint
+        run: pnpm -r lint
+
+      - name: Type-check
+        run: pnpm -r exec tsc --noEmit
+
+      - name: Prisma migrate deploy
+        run: pnpm --filter @software-factory/api exec prisma migrate deploy
+
+      - name: Test
+        run: pnpm -r test -- --passWithNoTests
+
+      - name: Build
+        run: pnpm -r build
+
+      - name: Secrets scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
