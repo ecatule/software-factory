@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
 import { PrismaService } from "../../common/prisma/prisma.service";
 
 /**
@@ -55,10 +56,12 @@ export class WorkflowsService {
       );
     }
 
-    return this.prisma.db.demand.update({
+    const updated = await this.prisma.db.demand.update({
       where: { id: demandId },
       data: { status: toStageKey, updatedBy: actingUserId },
     });
+    await this.recordStageTransition(demandId, demand.status, toStageKey, actingUserId);
+    return updated;
   }
 
   /** Advances by exactly one step, used by the execution worker after a stage completes. */
@@ -77,9 +80,38 @@ export class WorkflowsService {
     const nextStage = await this.prisma.db.workflowStage.findUniqueOrThrow({
       where: { id: nextTransition.toStageId },
     });
-    return this.prisma.db.demand.update({
+    const updated = await this.prisma.db.demand.update({
       where: { id: demandId },
       data: { status: nextStage.key, updatedBy: actingUserId },
+    });
+    await this.recordStageTransition(demandId, demand.status, nextStage.key, actingUserId);
+    return updated;
+  }
+
+  /**
+   * feature 004 (spec FR-011, research.md §6): explicit AuditLog write so
+   * stage transitions are captured even when triggered from a BullMQ worker
+   * (ExecutionsProcessor calling advanceToNextStage), which the global
+   * AuditInterceptor never sees — it only wraps HTTP request/response
+   * cycles. DashboardService pairs consecutive rows per demand to compute
+   * average time per stage.
+   */
+  private async recordStageTransition(
+    demandId: string,
+    fromStatus: string,
+    toStatus: string,
+    actorUserId?: string,
+  ) {
+    await this.prisma.db.auditLog.create({
+      data: {
+        actorUserId,
+        action: "STAGE_TRANSITION",
+        entityType: "demands",
+        entityId: demandId,
+        before: { status: fromStatus },
+        after: { status: toStatus },
+        correlationId: randomUUID(),
+      },
     });
   }
 }

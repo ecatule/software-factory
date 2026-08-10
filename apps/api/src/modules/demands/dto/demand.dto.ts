@@ -48,3 +48,15 @@ export class TransitionDemandDto {
   @IsString()
   toStage!: string;
 }
+
+/** feature 004 FR-015: imports a demand from an external registrar (Monday), via DemandProvider. */
+export class ImportDemandDto {
+  @IsString()
+  externalId!: string;
+
+  @IsUUID()
+  clientId!: string;
+
+  @IsUUID()
+  projectId!: string;
+}

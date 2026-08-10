@@ -42,6 +42,20 @@ export class GitHubRepositoryProvider implements CodeRepositoryProvider {
     return { name: branchName };
   }
 
+  /**
+   * Unlike `createBranch` (relative cwd, assumes the clone is a sibling of
+   * the API process's own cwd), this takes the clone's absolute path
+   * directly — used by `DeveloperAgentService.ensureRepositoriesCloned()`
+   * against a demand-specific `artefatos/<repo>/` clone.
+   */
+  async checkoutBranch(targetPath: string, branchName: string): Promise<void> {
+    try {
+      await execAsync(`git checkout ${branchName}`, { cwd: targetPath });
+    } catch {
+      await execAsync(`git checkout -b ${branchName}`, { cwd: targetPath });
+    }
+  }
+
   async getFile(externalReference: string, branch: string, filePath: string): Promise<FileRef> {
     const data = await this.api(
       `/repos/${externalReference}/contents/${filePath}?ref=${branch}`,

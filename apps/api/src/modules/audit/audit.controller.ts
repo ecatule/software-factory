@@ -2,6 +2,7 @@ import { Controller, Get, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import type { Prisma } from "@prisma/client";
 import { JwtAuthGuard } from "../identity/auth/jwt-auth.guard";
+import { RequirePermission } from "../identity/guards/permissions.decorator";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { paginate } from "../../common/pagination/paginate";
 
@@ -14,6 +15,7 @@ export class AuditController {
 
   /** spec 001 FR-025 / spec 002 FR-028 (now paginated, contracts/console-lists.md). */
   @Get()
+  @RequirePermission("AUDIT_READ")
   list(
     @Query("entity_type") entityType?: string,
     @Query("entity_id") entityId?: string,

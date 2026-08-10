@@ -10,6 +10,8 @@ export interface Demand {
   clientId: string;
   projectId: string;
   responsibleUserId?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface WorkflowStage {
@@ -48,8 +50,32 @@ export interface Artifact {
 
 export interface Specification {
   id: string;
+  demandId: string;
   documentType: string;
   currentVersionId: string | null;
+}
+
+/** feature 003 (packages/domain SpecificationProposal, mirrored for the frontend). */
+export interface SpecificationProposal {
+  summary: string;
+  businessRequirements: string[];
+  businessRules: string[];
+  acceptanceCriteria: string[];
+  flows: string[];
+  technicalRequirements: string[];
+  identifiedArtifacts: string[];
+  suggestedArtifacts: string[];
+  risks: string[];
+  questions: string[];
+  specifyMarkdown: string;
+  planMarkdown: string;
+  changeSummary: {
+    rulesAdded: string[];
+    artifactsImpacted: string[];
+    apisImpacted: string[];
+    dataImpacted: string[];
+    suggestedTests: string[];
+  };
 }
 
 export interface GitActivity {
@@ -70,6 +96,19 @@ export interface PaginatedResult<T> {
 export interface DashboardSummary {
   stageCounts: { stage: string; count: number }[];
   recentDemands: Demand[];
+  /** feature 004 FR-009-FR-012. */
+  totals: {
+    all: number;
+    open: number;
+    inSpecification: number;
+    inDevelopment: number;
+    blocked: number;
+  };
+  pullRequestsOpen: number;
+  testsFailing: number;
+  agentsRunning: number;
+  byClient: { clientId: string; clientName: string; count: number }[];
+  avgTimePerStage: { stage: string; avgHours: number }[];
 }
 
 export interface Client {
@@ -87,4 +126,9 @@ export interface Project {
   branchNamingPolicy: string;
   requiredTestSuites: string[];
   version: number;
+  /** feature 004 FR-001. */
+  productionBranch: string | null;
+  homologationBranch: string | null;
+  homologationEnvironment: string | null;
+  productionEnvironment: string | null;
 }

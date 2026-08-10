@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../identity/auth/jwt-auth.guard";
+import { RequirePermission } from "../identity/guards/permissions.decorator";
 import { ExecutionsService } from "./executions.service";
 import { CreateExecutionDto } from "./dto/execution.dto";
 
@@ -29,6 +30,7 @@ export class ExecutionsController {
   }
 
   @Post()
+  @RequirePermission("AGENT_EXECUTE")
   create(@Body() dto: CreateExecutionDto) {
     return this.executionsService.create(dto);
   }

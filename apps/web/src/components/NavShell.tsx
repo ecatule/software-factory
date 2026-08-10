@@ -7,12 +7,15 @@ interface NavItem {
   to: string;
   /** Roles allowed to see this item; omit for "any signed-in user" (spec FR-003). */
   roles?: string[];
+  /** feature 004 FR-007a: permission required to see this item, alongside/instead of roles. */
+  permission?: string;
 }
 
 const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", to: "/" },
   { label: "Clients", to: "/clients" },
   { label: "Projects", to: "/projects" },
+  { label: "Technologies", to: "/technologies" },
   { label: "Demands", to: "/demands" },
   { label: "Workspaces", to: "/workspaces" },
   { label: "Artifacts", to: "/artifacts" },
@@ -21,7 +24,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Tests", to: "/tests" },
   { label: "Repositories", to: "/repositories" },
   { label: "Git Activity", to: "/git" },
-  { label: "Audit", to: "/audit" },
+  { label: "Audit", to: "/audit", permission: "AUDIT_READ" },
   { label: "Settings", to: "/settings", roles: ["admin"] },
 ];
 
@@ -30,11 +33,13 @@ const NAV_ITEMS: NavItem[] = [
  * disabling) entries the signed-in user's role doesn't permit.
  */
 export function NavShell({ children }: PropsWithChildren) {
-  const { user, logout } = useAuth();
+  const { user, logout, hasPermission } = useAuth();
   const location = useLocation();
 
   const visibleItems = NAV_ITEMS.filter(
-    (item) => !item.roles || item.roles.some((role) => user?.roles.includes(role)),
+    (item) =>
+      (!item.roles || item.roles.some((role) => user?.roles.includes(role))) &&
+      (!item.permission || hasPermission(item.permission)),
   );
 
   return (

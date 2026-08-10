@@ -20,6 +20,19 @@ const WORKFLOW_STAGES = [
   "CANCELLED",
 ] as const;
 
+// feature 004 (spec FR-004): granular permissions, all granted to the
+// `admin` role by default (FR-008) so no admin loses access already held.
+const PERMISSION_CATALOG = [
+  "DEMAND_READ",
+  "DEMAND_WRITE",
+  "SPECIFICATION_WRITE",
+  "SPECIFICATION_APPROVE",
+  "AGENT_EXECUTE",
+  "GIT_WRITE",
+  "PR_CREATE",
+  "AUDIT_READ",
+] as const;
+
 const PROVIDER_CATALOG: { key: string; kind: ProviderKind }[] = [
   { key: "monday", kind: ProviderKind.DEMAND_SOURCE },
   { key: "github", kind: ProviderKind.CODE_REPOSITORY },
@@ -48,10 +61,24 @@ async function seedIdentity() {
     create: { roleId: adminRole.id, permissionId: adminPermission.id },
   });
 
+  for (const name of PERMISSION_CATALOG) {
+    const permission = await prisma.permission.upsert({
+      where: { name },
+      update: {},
+      create: { name },
+    });
+    await prisma.rolePermission.upsert({
+      where: { roleId_permissionId: { roleId: adminRole.id, permissionId: permission.id } },
+      update: { stAtivo: true },
+      create: { roleId: adminRole.id, permissionId: permission.id },
+    });
+  }
+
+  const adminEmail = process.env.SEED_ADMIN_EMAIL ?? "admin@software-factory.local";
   const adminUser = await prisma.user.upsert({
-    where: { email: "admin@software-factory.local" },
+    where: { email: adminEmail },
     update: {},
-    create: { name: "Platform Admin", email: "admin@software-factory.local" },
+    create: { name: "Platform Admin", email: adminEmail },
   });
 
   await prisma.userRole.upsert({
@@ -108,6 +135,9 @@ const AGENT_CATALOG = [
   // spec User Story 6: registered here so ExecutionsProcessor's
   // `agent.type === "developer"` branch has a real Agent row to reference.
   { name: "DeveloperAgent", type: "developer" },
+  // feature 003: ExecutionsProcessor's `agent.type === "specification_copilot"`
+  // branch (the AI-assisted specification round).
+  { name: "SpecificationCopilotAgent", type: "specification_copilot" },
 ];
 
 async function seedAgents() {

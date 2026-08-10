@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { ROLES_KEY } from "./roles.decorator";
+import { PERMISSIONS_KEY } from "./permissions.decorator";
 import type { JwtPayload } from "../auth/jwt.strategy";
 
 /**
@@ -17,7 +18,16 @@ export class RbacGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
-    if (!requiredRoles || requiredRoles.length === 0) {
+    // feature 004 (spec FR-006/FR-007): finer-grained than @Roles(), checked
+    // independently — an endpoint may use either, both, or neither.
+    const requiredPermissions = this.reflector.getAllAndOverride<string[]>(PERMISSIONS_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    const hasRoleRequirement = requiredRoles && requiredRoles.length > 0;
+    const hasPermissionRequirement = requiredPermissions && requiredPermissions.length > 0;
+    if (!hasRoleRequirement && !hasPermissionRequirement) {
       return true;
     }
 
@@ -27,12 +37,26 @@ export class RbacGuard implements CanActivate {
       throw new ForbiddenException("No authenticated user on request");
     }
 
-    const hasRole = requiredRoles.some((role) => user.roles?.includes(role));
-    if (!hasRole) {
-      throw new ForbiddenException(
-        `Requires one of roles [${requiredRoles.join(", ")}]`,
-      );
+    if (hasRoleRequirement) {
+      const hasRole = requiredRoles.some((role) => user.roles?.includes(role));
+      if (!hasRole) {
+        throw new ForbiddenException(
+          `Requires one of roles [${requiredRoles.join(", ")}]`,
+        );
+      }
     }
+
+    if (hasPermissionRequirement) {
+      const hasPermission = requiredPermissions.every((permission) =>
+        user.permissions?.includes(permission),
+      );
+      if (!hasPermission) {
+        throw new ForbiddenException(
+          `Requires permission(s) [${requiredPermissions.join(", ")}]`,
+        );
+      }
+    }
+
     return true;
   }
 }

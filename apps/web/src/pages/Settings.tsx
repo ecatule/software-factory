@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { DataTable, FormField } from "@software-factory/ui";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -9,18 +9,29 @@ import {
   useSaveProviderConfiguration,
   type Provider,
 } from "../services/useProviders";
+import {
+  usePermissionsList,
+  useRolePermissions,
+  useRolesList,
+  useSetRolePermissions,
+  type Role,
+} from "../services/useRoles";
 
 interface ConfigFormValues {
   projectId: string;
   pipelineStage: string;
   model: string;
+  authProfileKey: string;
 }
 
 /**
  * spec User Story 15: Provider catalog + non-secret configuration.
  * Deliberately exposes only named, non-secret fields (project/pipeline
- * stage/model) rather than a generic free-text value box — see
- * contracts/settings.md.
+ * stage/model/auth profile) rather than a generic free-text value box — see
+ * contracts/settings.md. `authProfileKey` is just a label (e.g. "default",
+ * "personal", "work") picking one of the env-only credential profiles
+ * `ProviderConfigurationResolver`/`SpecKitProvider` resolve server-side —
+ * the actual credential never reaches this form or the database.
  */
 export function Settings() {
   const { data: providers, isLoading } = useProvidersList();
@@ -39,11 +50,14 @@ export function Settings() {
     if (!selectedProviderId) return;
     setSaveError(null);
     try {
+      const settings: Record<string, unknown> = {};
+      if (values.model) settings.model = values.model;
+      if (values.authProfileKey) settings.authProfileKey = values.authProfileKey;
       await saveConfiguration.mutateAsync({
         providerId: selectedProviderId,
         projectId: values.projectId || undefined,
         pipelineStage: values.pipelineStage || undefined,
-        settings: values.model ? { model: values.model } : {},
+        settings,
       });
       reset();
     } catch (error) {
@@ -83,10 +97,74 @@ export function Settings() {
             <FormField label="Project ID (optional)" registration={register("projectId")} />
             <FormField label="Pipeline stage (optional)" registration={register("pipelineStage")} />
             <FormField label="Model (optional, non-secret)" registration={register("model")} />
+            <FormField
+              label="Auth profile (optional, e.g. default)"
+              registration={register("authProfileKey")}
+            />
             <button type="submit">Save configuration</button>
           </form>
         </section>
       )}
+
+      <RolePermissions />
     </div>
+  );
+}
+
+/** feature 004 User Story 2 (FR-005): assign granular permissions to a role. */
+function RolePermissions() {
+  const { data: roles } = useRolesList();
+  const { data: allPermissions } = usePermissionsList();
+  const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
+  const { data: assigned } = useRolePermissions(selectedRoleId);
+  const setPermissions = useSetRolePermissions(selectedRoleId ?? "");
+  const [selected, setSelected] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (assigned) setSelected(assigned.map((p) => p.name));
+  }, [assigned]);
+
+  function toggle(name: string) {
+    setSelected((current) =>
+      current.includes(name) ? current.filter((p) => p !== name) : [...current, name],
+    );
+  }
+
+  const roleColumns: ColumnDef<Role, unknown>[] = [
+    { header: "Role", accessorKey: "name" },
+    { header: "Description", accessorKey: "description" },
+  ];
+
+  return (
+    <section>
+      <h2>Roles &amp; Permissions</h2>
+      <DataTable
+        columns={roleColumns}
+        data={roles ?? []}
+        onRowClick={(role) => setSelectedRoleId(role.id)}
+      />
+
+      {selectedRoleId && (
+        <div>
+          <ul>
+            {allPermissions?.map((permission) => (
+              <li key={permission.id}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(permission.name)}
+                    onChange={() => toggle(permission.name)}
+                  />{" "}
+                  {permission.name}
+                </label>
+              </li>
+            ))}
+          </ul>
+          <button type="button" onClick={() => setPermissions.mutate(selected)}>
+            Save permissions
+          </button>
+        </div>
+      )}
+    </section>
   );
 }

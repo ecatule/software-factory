@@ -24,6 +24,6 @@
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "prisma:migrate": "pnpm --filter @software-factory/api prisma migrate deploy",
-    "prisma:seed": "pnpm --filter @software-factory/api prisma db seed"
+    "prisma:seed": "pnpm --filter @software-factory/api exec prisma db seed"
   }
 }

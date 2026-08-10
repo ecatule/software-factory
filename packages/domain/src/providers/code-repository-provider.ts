@@ -35,6 +35,8 @@ export interface CodeRepositoryProvider {
   getRepository(externalReference: string): Promise<RepositoryRef>;
   cloneRepository(externalReference: string, targetPath: string): Promise<void>;
   createBranch(externalReference: string, branchName: string): Promise<BranchRef>;
+  /** Checks out `branchName` inside the clone at `targetPath` (creating it locally if new). */
+  checkoutBranch(targetPath: string, branchName: string): Promise<void>;
   getFile(externalReference: string, branch: string, path: string): Promise<FileRef>;
   searchCode(externalReference: string, query: string): Promise<FileRef[]>;
   commit(externalReference: string, branch: string, message: string): Promise<CommitRef>;

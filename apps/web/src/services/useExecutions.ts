@@ -22,3 +22,17 @@ export function useExecutionsList(page: number, status?: string) {
     queryFn: () => apiGet<PaginatedResult<Execution>>(`/executions?${params.toString()}`),
   });
 }
+
+/** feature 003 (research.md §10): polls a single execution, same POLL_INTERVAL_MS convention as useDemandPolling. */
+const POLL_INTERVAL_MS = 2000;
+const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "CANCELLED"]);
+
+export function useExecution(id: string | null) {
+  return useQuery({
+    queryKey: ["execution", id],
+    queryFn: () => apiGet<Execution>(`/executions/${id}`),
+    enabled: id !== null,
+    refetchInterval: (query) =>
+      query.state.data && TERMINAL_STATUSES.has(query.state.data.status) ? false : POLL_INTERVAL_MS,
+  });
+}

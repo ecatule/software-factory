@@ -31,7 +31,7 @@ model Workflow {
   version   Int       @default(1)
 
   name      String
-  projectId String?   @map("project_id") @db.Uuid
+  projectId String? @map("project_id") @db.Uuid
 
   stages      WorkflowStage[]
   transitions WorkflowTransition[]
@@ -152,9 +152,9 @@ model User {
   updatedBy String?   @map("updated_by") @db.Uuid
   version   Int       @default(1)
 
-  name                     String
-  email                    String  @unique
-  identityProviderSubject  String? @map("identity_provider_subject")
+  name                    String
+  email                   String  @unique
+  identityProviderSubject String? @map("identity_provider_subject")
 
   roles UserRole[]
 
@@ -171,7 +171,7 @@ model Role {
   updatedBy String?   @map("updated_by") @db.Uuid
   version   Int       @default(1)
 
-  name        String @unique
+  name        String  @unique
   description String?
 
   users       UserRole[]
@@ -190,7 +190,7 @@ model Permission {
   updatedBy String?   @map("updated_by") @db.Uuid
   version   Int       @default(1)
 
-  name        String @unique
+  name        String  @unique
   description String?
 
   roles RolePermission[]
@@ -213,6 +213,11 @@ model RolePermission {
   role         Role       @relation(fields: [roleId], references: [id])
   permissionId String     @map("permission_id") @db.Uuid
   permission   Permission @relation(fields: [permissionId], references: [id])
+  // feature 004 (/speckit.analyze finding G1): physical delete is blocked
+  // platform-wide even for join tables (same issue already fixed for
+  // ProjectTechnology in feature 003) — revoking a permission flips this
+  // instead of deleting the row.
+  stAtivo      Boolean    @default(true) @map("st_ativo")
 
   @@id([roleId, permissionId])
   @@map("role_permissions")
@@ -234,15 +239,15 @@ model AuditLog {
   updatedBy String?   @map("updated_by") @db.Uuid
   version   Int       @default(1)
 
-  actorUserId          String?  @map("actor_user_id") @db.Uuid
-  actorAgentExecutionId String? @map("actor_agent_execution_id") @db.Uuid
-  action               String
-  entityType           String   @map("entity_type")
-  entityId             String?  @map("entity_id")
-  before               Json?
-  after                Json?
-  correlationId        String   @map("correlation_id")
-  occurredAt           DateTime @default(now()) @map("occurred_at")
+  actorUserId           String?  @map("actor_user_id") @db.Uuid
+  actorAgentExecutionId String?  @map("actor_agent_execution_id") @db.Uuid
+  action                String
+  entityType            String   @map("entity_type")
+  entityId              String?  @map("entity_id")
+  before                Json?
+  after                 Json?
+  correlationId         String   @map("correlation_id")
+  occurredAt            DateTime @default(now()) @map("occurred_at")
 
   @@index([entityType, entityId])
   @@map("audit_logs")
@@ -262,8 +267,8 @@ model Client {
   updatedBy String?   @map("updated_by") @db.Uuid
   version   Int       @default(1)
 
-  name               String
-  externalReference  String? @map("external_reference")
+  name              String
+  externalReference String? @map("external_reference")
 
   projects Project[]
   demands  Demand[]
@@ -281,16 +286,67 @@ model Project {
   updatedBy String?   @map("updated_by") @db.Uuid
   version   Int       @default(1)
 
-  clientId            String   @map("client_id") @db.Uuid
-  client               Client   @relation(fields: [clientId], references: [id])
-  name                 String
-  technologies         String[]
-  branchNamingPolicy   String   @default("<type>/<client>/<ticket>-<slug>") @map("branch_naming_policy")
-  requiredTestSuites   String[] @map("required_test_suites")
+  clientId           String   @map("client_id") @db.Uuid
+  client             Client   @relation(fields: [clientId], references: [id])
+  name               String
+  technologies       String[]
+  branchNamingPolicy String   @default("<type>/<client>/<ticket>-<slug>") @map("branch_naming_policy")
+  requiredTestSuites String[] @map("required_test_suites")
 
-  demands Demand[]
+  // feature 004 (spec FR-001): resolves the "Branch de Origem" gap in the
+  // AI-assisted Specification workflow (feature 003).
+  productionBranch        String? @map("production_branch")
+  homologationBranch      String? @map("homologation_branch")
+  homologationEnvironment String? @map("homologation_environment")
+  productionEnvironment   String? @map("production_environment")
+
+  demands             Demand[]
+  projectTechnologies ProjectTechnology[]
 
   @@map("projects")
+}
+
+// ---------------------------------------------------------------------------
+// Technology / ProjectTechnology (feature 003 spec FR-014/FR-015/FR-016): a
+// project's tech stack, automatically folded into the AI specification
+// context. `technologies` (String[]) above predates this and is left
+// untouched — this is a separate, normalized catalog.
+// ---------------------------------------------------------------------------
+
+model Technology {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  name        String
+  category    String
+  // Mapped to a distinct column ("tech_version") to avoid colliding with the
+  // mandatory optimistic-locking `version` column above.
+  techVersion String? @map("tech_version")
+  description String?
+  status      String  @default("ACTIVE")
+
+  projectTechnologies ProjectTechnology[]
+
+  @@map("technologies")
+}
+
+model ProjectTechnology {
+  projectId    String     @map("project_id") @db.Uuid
+  project      Project    @relation(fields: [projectId], references: [id])
+  technologyId String     @map("technology_id") @db.Uuid
+  technology   Technology @relation(fields: [technologyId], references: [id])
+  // Physical delete is blocked platform-wide (softDeleteGuardExtension) even
+  // for join tables — an association is "removed" by flipping this instead.
+  stAtivo      Boolean    @default(true) @map("st_ativo")
+
+  @@id([projectId, technologyId])
+  @@map("project_technologies")
 }
 
 // ---------------------------------------------------------------------------
@@ -328,10 +384,49 @@ model Demand {
   status            String     @default("NEW")
   responsibleUserId String?    @map("responsible_user_id") @db.Uuid
 
+  // feature 003 (research.md §8/§9): null until this demand's specification
+  // flow is first touched, which lazily creates increment #1.
+  currentIncrementId String?     @map("current_increment_id") @db.Uuid
+  currentIncrement   Increment?  @relation("DemandCurrentIncrement", fields: [currentIncrementId], references: [id])
+  increments         Increment[] @relation("DemandIncrements")
+
   // spec FR-028: re-import of an already-known (origin, external_id) MUST be
   // rejected (409), never silently update or duplicate.
   @@unique([origin, externalId])
   @@map("demands")
+}
+
+// ---------------------------------------------------------------------------
+// Increment (feature 003 spec FR-017/FR-018/FR-019/FR-021): an independent
+// evolution unit within a Demand. Increment #1 is created lazily (research.md
+// §8) rather than at Demand-creation time.
+// ---------------------------------------------------------------------------
+
+model Increment {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  demandId String  @map("demand_id") @db.Uuid
+  demand   Demand  @relation("DemandIncrements", fields: [demandId], references: [id])
+  number   Int
+  title    String?
+  reason   String
+  status   String  @default("OPEN")
+
+  baseSpecificationVersionId String?               @map("base_specification_version_id") @db.Uuid
+  baseSpecificationVersion   SpecificationVersion? @relation("IncrementBaseVersion", fields: [baseSpecificationVersionId], references: [id])
+
+  specificationVersions SpecificationVersion[] @relation("IncrementVersions")
+  currentForDemands     Demand[]               @relation("DemandCurrentIncrement")
+
+  @@unique([demandId, number])
+  @@map("increments")
 }
 
 // ---------------------------------------------------------------------------
@@ -437,16 +532,30 @@ model SpecificationVersion {
   updatedBy String?   @map("updated_by") @db.Uuid
   version   Int       @default(1)
 
-  specificationId String         @map("specification_id") @db.Uuid
-  specification   Specification  @relation("SpecificationToVersions", fields: [specificationId], references: [id])
-  versionNumber   Int            @map("version_number")
-  content         String
-  authorUserId    String?        @map("author_user_id") @db.Uuid
-  agentId         String?        @map("agent_id") @db.Uuid
-  llmProviderConfigurationId String? @map("llm_provider_configuration_id") @db.Uuid
-  executionId     String?        @map("execution_id") @db.Uuid
-  execution       AgentExecution? @relation(fields: [executionId], references: [id])
-  reason          String?
+  specificationId            String          @map("specification_id") @db.Uuid
+  specification              Specification   @relation("SpecificationToVersions", fields: [specificationId], references: [id])
+  versionNumber              Int             @map("version_number")
+  content                    String
+  authorUserId               String?         @map("author_user_id") @db.Uuid
+  agentId                    String?         @map("agent_id") @db.Uuid
+  llmProviderConfigurationId String?         @map("llm_provider_configuration_id") @db.Uuid
+  executionId                String?         @map("execution_id") @db.Uuid
+  execution                  AgentExecution? @relation(fields: [executionId], references: [id])
+  reason                     String?
+
+  // feature 003 (data-model.md "Extended: SpecificationVersion"): nullable
+  // for pre-existing 001/002 rows (backward compatible).
+  incrementId     String?    @map("increment_id") @db.Uuid
+  increment       Increment? @relation("IncrementVersions", fields: [incrementId], references: [id])
+  status          String     @default("GENERATED")
+  source          String     @default("HUMAN_EDITED")
+  llmModel        String?    @map("llm_model")
+  approvedBy      String?    @map("approved_by") @db.Uuid
+  approvedAt      DateTime?  @map("approved_at")
+  approvalComment String?    @map("approval_comment")
+  changeSummary   Json?      @map("change_summary")
+
+  baseForIncrements Increment[] @relation("IncrementBaseVersion")
 
   @@unique([specificationId, versionNumber])
   @@map("specification_versions")
@@ -516,9 +625,9 @@ model Artifact {
 // a repository may back multiple artifacts (Repository model lands in US6;
 // referenced here by id only until then).
 model ArtifactRepository {
-  artifactId   String @map("artifact_id") @db.Uuid
+  artifactId   String   @map("artifact_id") @db.Uuid
   artifact     Artifact @relation(fields: [artifactId], references: [id])
-  repositoryId String @map("repository_id") @db.Uuid
+  repositoryId String   @map("repository_id") @db.Uuid
 
   @@id([artifactId, repositoryId])
   @@map("artifact_repositories")
@@ -562,6 +671,11 @@ model Repository {
   projectId               String  @map("project_id") @db.Uuid
   providerConfigurationId String? @map("provider_configuration_id") @db.Uuid
   externalReference       String  @map("external_reference")
+
+  // feature 004 (spec FR-002): overrides the project-level branch fields for
+  // this specific repository when a project has more than one.
+  productionBranch   String? @map("production_branch")
+  homologationBranch String? @map("homologation_branch")
 
   branches Branch[]
 
@@ -659,12 +773,12 @@ model Commit {
   updatedBy String?   @map("updated_by") @db.Uuid
   version   Int       @default(1)
 
-  branchId        String  @map("branch_id") @db.Uuid
-  sha             String
-  demandId        String  @map("demand_id") @db.Uuid
-  artifactId      String  @map("artifact_id") @db.Uuid
-  taskReference   String? @map("task_reference")
-  testExecutionId String  @map("test_execution_id") @db.Uuid
+  branchId         String  @map("branch_id") @db.Uuid
+  sha              String
+  demandId         String  @map("demand_id") @db.Uuid
+  artifactId       String  @map("artifact_id") @db.Uuid
+  taskReference    String? @map("task_reference")
+  testExecutionId  String  @map("test_execution_id") @db.Uuid
   agentExecutionId String? @map("agent_execution_id") @db.Uuid
 
   @@map("commits")
@@ -680,12 +794,12 @@ model PullRequest {
   updatedBy String?   @map("updated_by") @db.Uuid
   version   Int       @default(1)
 
-  repositoryId       String @map("repository_id") @db.Uuid
-  demandId           String @map("demand_id") @db.Uuid
-  externalReference  String @map("external_reference")
-  title              String
-  description        String
-  status             String @default("OPEN")
+  repositoryId      String @map("repository_id") @db.Uuid
+  demandId          String @map("demand_id") @db.Uuid
+  externalReference String @map("external_reference")
+  title             String
+  description       String
+  status            String @default("OPEN")
 
   @@map("pull_requests")
 }

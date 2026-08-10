@@ -7,6 +7,8 @@ export interface AuthUser {
   id: string;
   email: string;
   roles: string[];
+  /** feature 004 (contracts/permissions.md): checked by hasPermission() for FR-007a. */
+  permissions: string[];
 }
 
 interface SessionResponse {
@@ -19,6 +21,7 @@ interface AuthContextValue {
   status: "loading" | "signed-in" | "signed-out";
   login: (redirect?: string) => void;
   logout: () => Promise<void>;
+  hasPermission: (permission: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -50,6 +53,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
     void bootstrapSession();
   }, [bootstrapSession]);
 
+  useEffect(() => {
+    // The access token expires in JWT_ACCESS_EXPIRES_IN (15m by default) and
+    // was previously only ever minted once, on page load — any tab left open
+    // longer than that started getting silent 401s on every write, with no
+    // error surfaced anywhere. Re-mint it well inside that window using the
+    // same httpOnly refresh cookie bootstrapSession() already relies on.
+    const interval = setInterval(() => void bootstrapSession(), 10 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [bootstrapSession]);
+
   const login = useCallback((redirect = "/") => {
     window.location.href = `${API_BASE_URL}/api/v1/auth/login?redirect=${encodeURIComponent(redirect)}`;
   }, []);
@@ -61,8 +74,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setStatus("signed-out");
   }, []);
 
+  const hasPermission = useCallback(
+    (permission: string) => user?.permissions?.includes(permission) ?? false,
+    [user],
+  );
+
   return (
-    <AuthContext.Provider value={{ user, status, login, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ user, status, login, logout, hasPermission }}>
+      {children}
+    </AuthContext.Provider>
   );
 }
 

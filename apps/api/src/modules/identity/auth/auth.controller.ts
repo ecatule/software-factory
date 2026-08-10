@@ -93,10 +93,20 @@ export class AuthController {
       const { accessToken, refreshToken: nextRefreshToken } =
         await this.authService.refresh(refreshToken);
       this.setRefreshCookie(res, nextRefreshToken);
-      const payload = this.jwt.decode(accessToken) as { sub: string; email: string; roles: string[] };
+      const payload = this.jwt.decode(accessToken) as {
+        sub: string;
+        email: string;
+        roles: string[];
+        permissions: string[];
+      };
       res.json({
         accessToken,
-        user: { id: payload.sub, email: payload.email, roles: payload.roles },
+        user: {
+          id: payload.sub,
+          email: payload.email,
+          roles: payload.roles,
+          permissions: payload.permissions,
+        },
       });
     } catch {
       res.status(401).json({ message: "Session expired — please sign in again." });

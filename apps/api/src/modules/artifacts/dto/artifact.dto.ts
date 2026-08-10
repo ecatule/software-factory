@@ -9,6 +9,10 @@ export class CreateArtifactDto {
 
   @IsOptional()
   @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsString()
   technology?: string;
 
   @IsOptional()

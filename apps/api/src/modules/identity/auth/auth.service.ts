@@ -23,14 +23,30 @@ export class AuthService {
   async issueTokensForVerifiedIdentity(email: string): Promise<TokenPair> {
     const user = await this.prisma.db.user.findUnique({
       where: { email },
-      include: { roles: { include: { role: true } } },
+      include: {
+        roles: {
+          include: { role: { include: { permissions: { include: { permission: true } } } } },
+        },
+      },
     });
     if (!user) {
       throw new UnauthorizedException("Unknown identity");
     }
 
     const roles = user.roles.map((userRole) => userRole.role.name);
-    const payload = { sub: user.id, email: user.email, roles };
+    // feature 004 (research.md §1): flatten every role's active RolePermission
+    // rows into a deduplicated permission-name list, embedded in the token
+    // so no DB round-trip is needed per request (same approach as `roles`).
+    const permissions = [
+      ...new Set(
+        user.roles.flatMap((userRole) =>
+          userRole.role.permissions
+            .filter((rp) => rp.stAtivo)
+            .map((rp) => rp.permission.name),
+        ),
+      ),
+    ];
+    const payload = { sub: user.id, email: user.email, roles, permissions };
 
     const accessToken = this.jwt.sign(payload, {
       secret: process.env.JWT_ACCESS_SECRET ?? "change-me",

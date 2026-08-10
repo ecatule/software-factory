@@ -1,5 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost } from "./api";
+import type { Specification } from "./types";
+
+export function useSpecification(specificationId: string) {
+  return useQuery({
+    queryKey: ["specification", specificationId],
+    queryFn: () => apiGet<Specification>(`/specifications/${specificationId}`),
+  });
+}
+
+/** feature 003 (data-model.md "Extended: SpecificationVersion"). */
+export type SpecificationVersionStatus =
+  | "DRAFT"
+  | "GENERATED"
+  | "REVIEW"
+  | "APPROVED"
+  | "REJECTED"
+  | "SUPERSEDED";
+export type SpecificationVersionSource = "AI" | "HUMAN_EDITED" | "UPLOADED";
 
 export interface SpecificationVersion {
   id: string;
@@ -10,6 +28,20 @@ export interface SpecificationVersion {
   agentId: string | null;
   reason: string | null;
   createdAt: string;
+  incrementId: string | null;
+  status: SpecificationVersionStatus;
+  source: SpecificationVersionSource;
+  llmModel: string | null;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  approvalComment: string | null;
+  changeSummary: {
+    rulesAdded: string[];
+    artifactsImpacted: string[];
+    apisImpacted: string[];
+    dataImpacted: string[];
+    suggestedTests: string[];
+  } | null;
 }
 
 export function useSpecificationVersionsList(specificationId: string) {
@@ -22,8 +54,31 @@ export function useSpecificationVersionsList(specificationId: string) {
 export function useCreateSpecificationVersion(specificationId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { content: string; reason: string }) =>
+    mutationFn: (input: { content: string; reason: string; incrementId?: string }) =>
       apiPost<SpecificationVersion>(`/specifications/${specificationId}/versions`, input),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["specification", specificationId, "versions"] }),
+  });
+}
+
+export function useApproveSpecificationVersion(specificationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ versionNumber, comment }: { versionNumber: number; comment?: string }) =>
+      apiPost<SpecificationVersion>(
+        `/specifications/${specificationId}/versions/${versionNumber}/approve`,
+        { comment },
+      ),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["specification", specificationId, "versions"] }),
+  });
+}
+
+export function useUploadSpecificationVersion(specificationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { specifyMarkdown?: string; planMarkdown?: string; reason?: string }) =>
+      apiPost<SpecificationVersion>(`/specifications/${specificationId}/versions/upload`, input),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["specification", specificationId, "versions"] }),
   });

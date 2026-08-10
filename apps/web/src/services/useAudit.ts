@@ -18,6 +18,8 @@ export interface AuditFilters {
   from?: string;
   to?: string;
   page?: number;
+  /** feature 004 US5: lets callers (e.g. the Cockpit Audit tab) skip the request entirely without AUDIT_READ. */
+  enabled?: boolean;
 }
 
 export function useAuditList(filters: AuditFilters) {
@@ -28,5 +30,6 @@ export function useAuditList(filters: AuditFilters) {
   return useQuery({
     queryKey: ["audits", filters],
     queryFn: () => apiGet<PaginatedResult<AuditLogEntry>>(`/audits?${params.toString()}`),
+    enabled: filters.enabled ?? true,
   });
 }

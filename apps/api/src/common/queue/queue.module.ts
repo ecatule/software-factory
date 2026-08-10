@@ -11,7 +11,14 @@ export const EXECUTIONS_QUEUE = "executions";
 @Module({
   imports: [
     BullModule.forRoot({
-      connection: { url: process.env.REDIS_URL ?? "redis://localhost:6379" },
+      connection: {
+        url: process.env.REDIS_URL ?? "redis://localhost:6379",
+        // Without these, an unreachable Redis makes queue.add() (and thus
+        // POST /executions) hang indefinitely instead of failing — ioredis
+        // otherwise retries forever with no connection timeout.
+        connectTimeout: 5000,
+        maxRetriesPerRequest: 2,
+      },
     }),
     BullModule.registerQueue({ name: EXECUTIONS_QUEUE }),
   ],

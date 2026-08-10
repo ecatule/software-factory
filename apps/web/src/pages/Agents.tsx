@@ -4,6 +4,9 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { useAgentsList, useTriggerExecution, type Agent, type TriggerExecutionInput } from "../services/useAgents";
 import { useDemandsList } from "../services/useDemands";
 
+/** SDD pipeline stages SpecKitProvider actually understands ("Modo B" — headless Claude Code). */
+const PIPELINE_STAGES = ["specify", "clarify", "plan", "checklist", "tasks", "analyze"] as const;
+
 /** spec User Story 9: list the Agent catalog and trigger an execution. */
 export function Agents() {
   const { data: agents, isLoading } = useAgentsList();
@@ -52,8 +55,15 @@ export function Agents() {
             </select>
           </div>
           <div className="form-field">
-            <label htmlFor="pipelineStage">Pipeline stage (optional)</label>
-            <input id="pipelineStage" {...register("pipelineStage")} />
+            <label htmlFor="pipelineStage">Pipeline stage (optional — for the developer agent, always runs "implement")</label>
+            <select id="pipelineStage" {...register("pipelineStage")}>
+              <option value="">Default (specify)</option>
+              {PIPELINE_STAGES.map((stage) => (
+                <option key={stage} value={stage}>
+                  {stage}
+                </option>
+              ))}
+            </select>
           </div>
           <button type="submit">Trigger</button>
         </form>

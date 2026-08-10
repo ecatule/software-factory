@@ -6,6 +6,8 @@ export interface JwtPayload {
   sub: string;
   email: string;
   roles: string[];
+  /** feature 004 (research.md §1): the user's effective permission set, computed at token-issue time. */
+  permissions: string[];
 }
 
 @Injectable()

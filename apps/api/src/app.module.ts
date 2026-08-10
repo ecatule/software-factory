@@ -21,6 +21,9 @@ import { AuditModule } from "./modules/audit/audit.module";
 import { DashboardModule } from "./modules/dashboard/dashboard.module";
 import { AgentsModule } from "./modules/agents/agents.module";
 import { RepositoriesModule } from "./modules/repositories/repositories.module";
+import { TechnologiesModule } from "./modules/technologies/technologies.module";
+import { IncrementsModule } from "./modules/increments/increments.module";
+import { RolesModule } from "./modules/roles/roles.module";
 
 @Module({
   imports: [
@@ -42,6 +45,9 @@ import { RepositoriesModule } from "./modules/repositories/repositories.module";
     DashboardModule,
     AgentsModule,
     RepositoriesModule,
+    TechnologiesModule,
+    IncrementsModule,
+    RolesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

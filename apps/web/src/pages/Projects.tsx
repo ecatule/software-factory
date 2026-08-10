@@ -1,15 +1,25 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { DataTable, FormField, Modal } from "@software-factory/ui";
 import type { ColumnDef } from "@tanstack/react-table";
+import { ApiError } from "../services/api";
 import { useClientsList } from "../services/useClients";
 import { useCreateProject, useProjectsList, useUpdateProject } from "../services/useProjects";
+import {
+  useProjectTechnologies,
+  useSetProjectTechnologies,
+  useTechnologiesList,
+} from "../services/useTechnologies";
 import type { Project } from "../services/types";
 
 interface ProjectFormValues {
   clientId: string;
   name: string;
   requiredTestSuites: string;
+  productionBranch: string;
+  homologationBranch: string;
+  homologationEnvironment: string;
+  productionEnvironment: string;
 }
 
 function splitSuites(value: string): string[] {
@@ -28,6 +38,7 @@ export function Projects() {
   const updateProject = useUpdateProject();
   const [editing, setEditing] = useState<Project | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const { register, handleSubmit, reset } = useForm<ProjectFormValues>();
 
   const columns: ColumnDef<Project, unknown>[] = [
@@ -43,7 +54,16 @@ export function Projects() {
   ];
 
   function openCreate() {
-    reset({ clientId: clientFilter || "", name: "", requiredTestSuites: "" });
+    reset({
+      clientId: clientFilter || "",
+      name: "",
+      requiredTestSuites: "",
+      productionBranch: "",
+      homologationBranch: "",
+      homologationEnvironment: "",
+      productionEnvironment: "",
+    });
+    setSaveError(null);
     setIsCreating(true);
   }
 
@@ -52,22 +72,51 @@ export function Projects() {
       clientId: project.clientId,
       name: project.name,
       requiredTestSuites: project.requiredTestSuites.join(", "),
+      productionBranch: project.productionBranch ?? "",
+      homologationBranch: project.homologationBranch ?? "",
+      homologationEnvironment: project.homologationEnvironment ?? "",
+      productionEnvironment: project.productionEnvironment ?? "",
     });
+    setSaveError(null);
     setEditing(project);
   }
 
   async function onSubmit(values: ProjectFormValues) {
+    setSaveError(null);
     const requiredTestSuites = splitSuites(values.requiredTestSuites);
-    if (editing) {
-      await updateProject.mutateAsync({ id: editing.id, name: values.name, requiredTestSuites });
-      setEditing(null);
-    } else {
-      await createProject.mutateAsync({
-        clientId: values.clientId,
-        name: values.name,
-        requiredTestSuites,
-      });
-      setIsCreating(false);
+    const branchFields = {
+      productionBranch: values.productionBranch,
+      homologationBranch: values.homologationBranch,
+      homologationEnvironment: values.homologationEnvironment,
+      productionEnvironment: values.productionEnvironment,
+    };
+    try {
+      if (editing) {
+        await updateProject.mutateAsync({
+          id: editing.id,
+          name: values.name,
+          requiredTestSuites,
+          ...branchFields,
+        });
+        setEditing(null);
+      } else {
+        await createProject.mutateAsync({
+          clientId: values.clientId,
+          name: values.name,
+          requiredTestSuites,
+        });
+        setIsCreating(false);
+      }
+    } catch (error) {
+      // Previously unhandled — a failed save (e.g. an expired session) left
+      // the modal open with no feedback, indistinguishable from doing
+      // nothing. See AuthContext.tsx for the expired-session root cause.
+      if (error instanceof ApiError) {
+        const message = (error.body as { message?: string })?.message;
+        setSaveError(message ?? `Request failed (${error.status}). Try reloading the page.`);
+      } else {
+        setSaveError("Unexpected error saving the project.");
+      }
     }
   }
 
@@ -105,6 +154,7 @@ export function Projects() {
         }}
       >
         <form onSubmit={handleSubmit(onSubmit)}>
+          {saveError && <p className="form-error">{saveError}</p>}
           {!editing && (
             <div className="form-field">
               <label htmlFor="clientId">Client</label>
@@ -123,9 +173,73 @@ export function Projects() {
             label="Required test suites (comma-separated)"
             registration={register("requiredTestSuites")}
           />
+          {editing && (
+            <>
+              <FormField label="Production branch" registration={register("productionBranch")} />
+              <FormField
+                label="Homologation branch"
+                registration={register("homologationBranch")}
+              />
+              <FormField
+                label="Homologation environment"
+                registration={register("homologationEnvironment")}
+              />
+              <FormField
+                label="Production environment"
+                registration={register("productionEnvironment")}
+              />
+            </>
+          )}
           <button type="submit">Save</button>
         </form>
+        {editing && (
+          <ProjectTechnologies projectId={editing.id} onSaved={() => setEditing(null)} />
+        )}
       </Modal>
     </div>
+  );
+}
+
+/** feature 003 FR-015: multi-select technology association, editable once a project exists. */
+function ProjectTechnologies({ projectId, onSaved }: { projectId: string; onSaved: () => void }) {
+  const { data: allTechnologies } = useTechnologiesList();
+  const { data: assigned } = useProjectTechnologies(projectId);
+  const setTechnologies = useSetProjectTechnologies(projectId);
+  const [selected, setSelected] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (assigned) setSelected(assigned.map((t) => t.id));
+  }, [assigned]);
+
+  function toggle(id: string) {
+    setSelected((current) =>
+      current.includes(id) ? current.filter((t) => t !== id) : [...current, id],
+    );
+  }
+
+  return (
+    <section>
+      <h2>Technologies</h2>
+      <ul>
+        {allTechnologies?.items.map((tech) => (
+          <li key={tech.id}>
+            <label>
+              <input
+                type="checkbox"
+                checked={selected.includes(tech.id)}
+                onChange={() => toggle(tech.id)}
+              />{" "}
+              {tech.name}
+            </label>
+          </li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        onClick={() => setTechnologies.mutate(selected, { onSuccess: onSaved })}
+      >
+        Save technologies
+      </button>
+    </section>
   );
 }

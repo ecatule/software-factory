@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../identity/auth/jwt-auth.guard";
+import { RequirePermission } from "../identity/guards/permissions.decorator";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { GitService } from "./git.service";
 import { CreateCommitDto } from "./dto/git.dto";
@@ -16,16 +17,19 @@ export class GitController {
   ) {}
 
   @Post("branch")
+  @RequirePermission("GIT_WRITE")
   createBranch(@Param("demandId") demandId: string) {
     return this.gitService.createBranch(demandId);
   }
 
   @Post("commit")
+  @RequirePermission("GIT_WRITE")
   commit(@Param("demandId") demandId: string, @Body() dto: CreateCommitDto) {
     return this.gitService.commit(demandId, dto.artifactId, dto.message);
   }
 
   @Post("pull-request")
+  @RequirePermission("PR_CREATE")
   createPullRequest(@Param("demandId") demandId: string) {
     return this.gitService.createPullRequest(demandId);
   }

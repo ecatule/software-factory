@@ -1,7 +1,8 @@
-import { Controller, Get, Param, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../identity/auth/jwt-auth.guard";
 import { RepositoriesService } from "./repositories.service";
+import { UpdateRepositoryDto } from "./dto/repository.dto";
 
 @ApiTags("repositories")
 @ApiBearerAuth()
@@ -27,5 +28,10 @@ export class RepositoriesController {
   @Get(":id/artifacts")
   artifacts(@Param("id") id: string) {
     return this.repositoriesService.artifacts(id);
+  }
+
+  @Patch(":id")
+  update(@Param("id") id: string, @Body() dto: UpdateRepositoryDto) {
+    return this.repositoriesService.update(id, dto);
   }
 }

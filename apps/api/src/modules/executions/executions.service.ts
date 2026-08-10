@@ -43,6 +43,8 @@ export class ExecutionsService {
         demandId: dto.demandId,
         providerConfigurationId: dto.providerConfigurationId,
         pipelineStage: dto.pipelineStage,
+        // feature 003 (research.md §11): previously always defaulted to "{}".
+        input: dto.input ?? {},
         status: "QUEUED",
       },
     });

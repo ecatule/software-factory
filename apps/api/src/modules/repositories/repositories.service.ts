@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { paginate } from "../../common/pagination/paginate";
+import { UpdateRepositoryDto } from "./dto/repository.dto";
 
 /** spec 002 FR-024/FR-025: repositories were only ever created implicitly by US6/US8's Developer Agent (001) — never listed. */
 @Injectable()
@@ -22,6 +23,12 @@ export class RepositoriesService {
     const repository = await this.prisma.db.repository.findUnique({ where: { id } });
     if (!repository) throw new NotFoundException(`Repository ${id} not found`);
     return repository;
+  }
+
+  /** feature 004 FR-002: Repository previously had no update endpoint at all. */
+  async update(id: string, dto: UpdateRepositoryDto) {
+    await this.get(id);
+    return this.prisma.db.repository.update({ where: { id }, data: dto });
   }
 
   /** spec 001 FR-016's N:N artifact↔repository relationship, made visible. */

@@ -50,6 +50,7 @@ export class ArtifactsService {
         demandId,
         name: dto.name,
         type: dto.type,
+        description: dto.description,
         technology: dto.technology,
         path: dto.path,
         repositories: dto.repositoryIds

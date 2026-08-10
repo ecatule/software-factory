@@ -1,4 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
+import { access } from "node:fs/promises";
+import path from "node:path";
 import {
   CODE_REPOSITORY_PROVIDER,
   type CodeRepositoryProvider,
@@ -60,6 +62,55 @@ export class DeveloperAgentService {
       );
     }
     return branches;
+  }
+
+  /**
+   * "Modo B" (headless Claude Code): `implement` needs a real local clone to
+   * edit, and `CodeRepositoryProvider.cloneRepository()` existed since 001
+   * but nothing ever called it. Call AFTER `ensureBranchesForDemand()` so
+   * the demand's branch already exists to check out. Idempotent — skips
+   * repositories already cloned into `artefatos/<repo>/`.
+   */
+  async ensureRepositoriesCloned(demandId: string, workspacePath: string): Promise<void> {
+    const artifacts = await this.prisma.db.artifact.findMany({
+      where: { demandId },
+      include: { repositories: true },
+    });
+    const repositoryIds = [
+      ...new Set(artifacts.flatMap((a) => a.repositories.map((r) => r.repositoryId))),
+    ];
+    if (repositoryIds.length === 0) return;
+
+    const branches = await this.prisma.db.branch.findMany({
+      where: { demandId, repositoryId: { in: repositoryIds } },
+    });
+    const branchNameByRepo = new Map(branches.map((b) => [b.repositoryId, b.name]));
+
+    for (const repositoryId of repositoryIds) {
+      const repository = await this.prisma.db.repository.findUniqueOrThrow({
+        where: { id: repositoryId },
+      });
+      const repoDirName = repository.externalReference.split("/").pop() ?? repository.externalReference;
+      const targetPath = path.join(workspacePath, "artefatos", repoDirName);
+
+      if (!(await this.pathExists(path.join(targetPath, ".git")))) {
+        await this.codeRepositoryProvider.cloneRepository(repository.externalReference, targetPath);
+      }
+
+      const branchName = branchNameByRepo.get(repositoryId);
+      if (branchName) {
+        await this.codeRepositoryProvider.checkoutBranch(targetPath, branchName);
+      }
+    }
+  }
+
+  private async pathExists(candidate: string): Promise<boolean> {
+    try {
+      await access(candidate);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**
