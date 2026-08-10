@@ -15,6 +15,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", to: "/" },
   { label: "Clients", to: "/clients" },
   { label: "Projects", to: "/projects" },
+  { label: "Sistemas", to: "/systems", permission: "SYSTEM_READ" },
   { label: "Technologies", to: "/technologies" },
   { label: "Demands", to: "/demands" },
   { label: "Workspaces", to: "/workspaces" },

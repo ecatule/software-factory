@@ -272,6 +272,8 @@ model Client {
 
   projects Project[]
   demands  Demand[]
+  // feature 005: Sistemas associados a este Cliente (N:N) — independente de Project.
+  systems  ClientSystem[]
 
   @@map("clients")
 }
@@ -389,6 +391,11 @@ model Demand {
   currentIncrementId String?     @map("current_increment_id") @db.Uuid
   currentIncrement   Increment?  @relation("DemandCurrentIncrement", fields: [currentIncrementId], references: [id])
   increments         Increment[] @relation("DemandIncrements")
+
+  // feature 005: Sistemas/Artefatos selecionados para a Especificação Assistida desta
+  // demanda — independente de `projectId` acima, que continua sendo "o projeto dono".
+  selectedSystems         DemandSystem[]
+  selectedSystemArtifacts DemandSystemArtifact[]
 
   // spec FR-028: re-import of an already-known (origin, external_id) MUST be
   // rejected (409), never silently update or duplicate.
@@ -802,4 +809,92 @@ model PullRequest {
   status            String @default("OPEN")
 
   @@map("pull_requests")
+}
+
+// ---------------------------------------------------------------------------
+// feature 005 (Gestão de Sistemas, Artefatos e Especificação Assistida sem IA
+// direta): System/SystemArtifact são um catálogo técnico reutilizável, novo e
+// independente de Project/Artifact (Clarifications 2026-08-10 — um mesmo
+// sistema real pode hoje ter várias linhas de Project, uma por Cliente, o que
+// impediria um catálogo único se reaproveitado). Nomeado em inglês
+// (`SystemArtifact`, não `Artifact`) para não colidir com o `Artifact` já
+// existente (rastreamento de arquivos por demanda, usado pelo Developer
+// Agent) — são conceitos diferentes.
+// ---------------------------------------------------------------------------
+
+model System {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  name        String
+  description String?
+
+  artifacts SystemArtifact[]
+  clients   ClientSystem[]
+  demands   DemandSystem[]
+
+  @@map("systems")
+}
+
+model SystemArtifact {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  systemId    String  @map("system_id") @db.Uuid
+  system      System  @relation(fields: [systemId], references: [id])
+  name        String
+  type        String
+  technology  String?
+  description String?
+
+  demands DemandSystemArtifact[]
+
+  @@map("system_artifacts")
+}
+
+model ClientSystem {
+  clientId String  @map("client_id") @db.Uuid
+  client   Client  @relation(fields: [clientId], references: [id])
+  systemId String  @map("system_id") @db.Uuid
+  system   System  @relation(fields: [systemId], references: [id])
+  // Physical delete is blocked platform-wide (softDeleteGuardExtension) even
+  // for join tables — an association is "removed" by flipping this instead.
+  stAtivo  Boolean @default(true) @map("st_ativo")
+
+  @@id([clientId, systemId])
+  @@map("client_systems")
+}
+
+model DemandSystem {
+  demandId String  @map("demand_id") @db.Uuid
+  demand   Demand  @relation(fields: [demandId], references: [id])
+  systemId String  @map("system_id") @db.Uuid
+  system   System  @relation(fields: [systemId], references: [id])
+  stAtivo  Boolean @default(true) @map("st_ativo")
+
+  @@id([demandId, systemId])
+  @@map("demand_systems")
+}
+
+model DemandSystemArtifact {
+  demandId         String         @map("demand_id") @db.Uuid
+  demand           Demand         @relation(fields: [demandId], references: [id])
+  systemArtifactId String         @map("system_artifact_id") @db.Uuid
+  systemArtifact   SystemArtifact @relation(fields: [systemArtifactId], references: [id])
+  stAtivo          Boolean        @default(true) @map("st_ativo")
+
+  @@id([demandId, systemArtifactId])
+  @@map("demand_system_artifacts")
 }

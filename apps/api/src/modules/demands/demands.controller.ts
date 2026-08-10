@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from "@nestjs/common";
@@ -24,6 +25,12 @@ import { PrismaService } from "../../common/prisma/prisma.service";
 import { DemandsService } from "./demands.service";
 import { CreateDemandDto, ImportDemandDto, UpdateDemandDto } from "./dto/demand.dto";
 import { CreateIncrementDto } from "../increments/dto/increment.dto";
+import {
+  GeneratePromptSpecDto,
+  SetDemandSystemArtifactsDto,
+  SetDemandSystemsDto,
+} from "./dto/demand-system.dto";
+import { PromptSpecService } from "./prompt-spec.service";
 
 /** feature 004 FR-006: DEMAND_READ is the class-level default; write endpoints override it below. */
 @ApiTags("demands")
@@ -42,6 +49,7 @@ export class DemandsController {
     private readonly incrementsService: IncrementsService,
     private readonly executionsService: ExecutionsService,
     private readonly prisma: PrismaService,
+    private readonly promptSpecService: PromptSpecService,
   ) {}
 
   @Get()
@@ -228,5 +236,40 @@ export class DemandsController {
       pull_requests: pullRequests,
       timeline,
     };
+  }
+
+  /** feature 005 (contracts/demand-spec-selection.md). */
+  @Get(":id/systems")
+  getSystems(@Param("id") id: string) {
+    return this.demandsService.getAvailableAndSelectedSystems(id);
+  }
+
+  @Put(":id/systems")
+  @RequirePermission("DEMAND_SYSTEM_WRITE")
+  setSystems(@Param("id") id: string, @Body() dto: SetDemandSystemsDto) {
+    return this.demandsService.setSelectedSystems(id, dto.systemIds);
+  }
+
+  @Get(":id/system-artifacts")
+  getSystemArtifacts(
+    @Param("id") id: string,
+    @Query("search") search?: string,
+    @Query("systemIds") systemIds?: string,
+  ) {
+    const parsedSystemIds = systemIds ? systemIds.split(",").filter(Boolean) : undefined;
+    return this.demandsService.getAvailableAndSelectedSystemArtifacts(id, search, parsedSystemIds);
+  }
+
+  @Put(":id/system-artifacts")
+  @RequirePermission("DEMAND_SYSTEM_WRITE")
+  setSystemArtifacts(@Param("id") id: string, @Body() dto: SetDemandSystemArtifactsDto) {
+    return this.demandsService.setSelectedSystemArtifacts(id, dto.systemArtifactIds);
+  }
+
+  /** feature 005 (contracts/prompt-generation.md): pure string building, zero LLM calls. */
+  @Post(":id/prompt-spec")
+  @RequirePermission("SPEC_PROMPT_GENERATE")
+  generatePromptSpec(@Param("id") id: string, @Body() dto: GeneratePromptSpecDto) {
+    return this.promptSpecService.generate(id, dto.business, dto.technical);
   }
 }

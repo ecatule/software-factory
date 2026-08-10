@@ -3,6 +3,8 @@ import { Login } from "./pages/Login";
 import { Dashboard } from "./pages/Dashboard";
 import { Clients } from "./pages/Clients";
 import { Projects } from "./pages/Projects";
+import { Systems } from "./pages/Systems";
+import { SystemDetail } from "./pages/SystemDetail";
 import { Technologies } from "./pages/Technologies";
 import { Demands } from "./pages/Demands";
 import { Workspaces } from "./pages/Workspaces";
@@ -32,6 +34,8 @@ export function App() {
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/clients" element={<Clients />} />
                 <Route path="/projects" element={<Projects />} />
+                <Route path="/systems" element={<Systems />} />
+                <Route path="/systems/:systemId" element={<SystemDetail />} />
                 <Route path="/technologies" element={<Technologies />} />
                 <Route path="/demands" element={<Demands />} />
                 <Route path="/workspaces" element={<Workspaces />} />

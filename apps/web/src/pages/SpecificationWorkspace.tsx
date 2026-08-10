@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { MarkdownEditor, DiffView, Badge } from "@software-factory/ui";
@@ -13,11 +13,16 @@ import {
   useSpecificationVersionsList,
   useUploadSpecificationVersion,
 } from "../services/useSpecificationVersions";
-import { useTriggerSpecificationRound } from "../services/useSpecificationCopilot";
-import { useExecution } from "../services/useExecutions";
 import { useDemand } from "../services/useDemands";
 import { useProjectTechnologies } from "../services/useTechnologies";
-import type { Artifact, SpecificationProposal } from "../services/types";
+import {
+  useDemandSystemArtifacts,
+  useDemandSystems,
+  useSetDemandSystemArtifacts,
+  useSetDemandSystems,
+  type SystemArtifact,
+} from "../services/useSystems";
+import { useGeneratePromptSpec } from "../services/usePromptSpec";
 
 interface OriginBranch {
   productionBranch: string | null;
@@ -31,17 +36,11 @@ interface OriginBranch {
  * page. "Branch de Origem" is now resolved automatically from the
  * repository backing the demand's known artifacts, or the project's own
  * branch fields (feature 004) — previously a manual-only placeholder.
+ * follow-up (feature 005): "# Telas"/"# APIs" were removed from here — that
+ * information now comes from the "Sistemas e Artefatos Envolvidos"
+ * selection below, not from free text.
  */
-function buildTechnicalTemplate(
-  artifacts: Artifact[] | undefined,
-  technologies: string,
-  originBranch: OriginBranch | undefined,
-): string {
-  const isScreen = (a: Artifact) => /tela|screen/i.test(a.type);
-  const isApi = (a: Artifact) => /api/i.test(a.type);
-  const screens = artifacts?.filter(isScreen).map((a) => `- ${a.name}`).join("\n");
-  const apis = artifacts?.filter(isApi).map((a) => `- ${a.name}`).join("\n");
-
+function buildTechnicalTemplate(technologies: string, originBranch: OriginBranch | undefined): string {
   const branchLines =
     originBranch?.productionBranch || originBranch?.homologationBranch
       ? [
@@ -56,12 +55,6 @@ function buildTechnicalTemplate(
       : "- (informar manualmente — nenhum branch cadastrado no projeto/repositório ainda)";
 
   return [
-    "# Telas",
-    screens || "- ",
-    "",
-    "# APIs",
-    apis || "- ",
-    "",
     "# Branch de Origem",
     branchLines,
     "",
@@ -78,9 +71,11 @@ const STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger"> 
 };
 
 /**
- * spec User Story 1: business/technical input → async AI round → structured
- * proposal → iterate/edit/upload → compare versions → approve. Replaces the
- * plain-Markdown SpecificationEditor.tsx.
+ * spec User Story 1: business/technical input → seleção de Sistemas/Artefatos →
+ * "Gerar Prompt SPEC" (feature 005) → copiar manualmente para a IA de preferência.
+ * O envio direto para IA (specification_copilot) saiu desta tela — FR-019,
+ * feature 005 Assumptions: o código continua existindo, só não é mais
+ * alcançado a partir daqui (ainda disparável via Agents.tsx).
  */
 export function SpecificationWorkspace() {
   const { specificationId } = useParams<{ specificationId: string }>();
@@ -91,41 +86,30 @@ export function SpecificationWorkspace() {
   const restoreVersion = useRestoreSpecificationVersion(specificationId ?? "");
   const approveVersion = useApproveSpecificationVersion(specificationId ?? "");
   const uploadVersion = useUploadSpecificationVersion(specificationId ?? "");
-  const triggerRound = useTriggerSpecificationRound(specification?.demandId ?? "");
-  const { data: demand } = useDemand(specification?.demandId ?? "");
+  const demandId = specification?.demandId ?? "";
+  const { data: demand } = useDemand(demandId);
   const { data: projectTechnologies } = useProjectTechnologies(demand?.projectId ?? "");
-  const { data: demandArtifacts } = useQuery({
-    queryKey: ["demand", specification?.demandId, "artifacts"],
-    queryFn: () => apiGet<Artifact[]>(`/demands/${specification?.demandId}/artifacts`),
-    enabled: !!specification?.demandId,
-  });
   const { data: originBranch } = useQuery({
-    queryKey: ["demand", specification?.demandId, "origin-branch"],
-    queryFn: () => apiGet<OriginBranch>(`/demands/${specification?.demandId}/origin-branch`),
-    enabled: !!specification?.demandId,
+    queryKey: ["demand", demandId, "origin-branch"],
+    queryFn: () => apiGet<OriginBranch>(`/demands/${demandId}/origin-branch`),
+    enabled: !!demandId,
   });
 
   const [businessText, setBusinessText] = useState("");
   const [technicalText, setTechnicalText] = useState("");
   const [technicalTextTouched, setTechnicalTextTouched] = useState(false);
 
-  // feature 003 follow-up: pre-fill the technical input with a # Telas / #
-  // APIs / # Branch de Origem / # Tecnologias scaffold (known artifacts +
-  // the project's technologies, FR-016) instead of a blank field — only
-  // once, and never once the analyst has started editing the field.
+  // feature 003 follow-up: pre-fill the technical input with a # Branch de
+  // Origem / # Tecnologias scaffold (the project's technologies, FR-016)
+  // instead of a blank field — only once, and never once the analyst has
+  // started editing the field.
   useEffect(() => {
     if (technicalTextTouched || !projectTechnologies) return;
     const techList = projectTechnologies
       .map((t) => (t.techVersion ? `${t.name} ${t.techVersion}` : t.name))
       .join(", ");
-    setTechnicalText(buildTechnicalTemplate(demandArtifacts, techList, originBranch));
-  }, [projectTechnologies, demandArtifacts, originBranch, technicalTextTouched]);
-
-  const [runningExecutionId, setRunningExecutionId] = useState<string | null>(null);
-  const { data: execution } = useExecution(runningExecutionId);
-  const isProcessing = execution ? execution.status === "QUEUED" || execution.status === "RUNNING" : false;
-  const proposal =
-    execution?.status === "COMPLETED" ? (execution.output as SpecificationProposal) : null;
+    setTechnicalText(buildTechnicalTemplate(techList, originBranch));
+  }, [projectTechnologies, originBranch, technicalTextTouched]);
 
   const [draft, setDraft] = useState<string | null>(null);
   const [diffPair, setDiffPair] = useState<[number, number] | null>(null);
@@ -141,23 +125,10 @@ export function SpecificationWorkspace() {
   const latest = versions[versions.length - 1];
   const content = draft ?? latest?.content ?? "";
 
-  async function sendToAi() {
-    const result = await triggerRound.mutateAsync({
-      business: { notes: businessText },
-      technical: { notes: technicalText },
-    });
-    setRunningExecutionId(result.id);
-  }
-
   async function saveDraft() {
     if (draft === null) return;
     await createVersion.mutateAsync({ content: draft, reason: "Edited via console" });
     setDraft(null);
-  }
-
-  async function acceptProposal(markdown: string) {
-    await createVersion.mutateAsync({ content: markdown, reason: "Accepted AI proposal" });
-    setRunningExecutionId(null);
   }
 
   async function handleUpload(specifyMarkdown: string, planMarkdown: string) {
@@ -191,56 +162,9 @@ export function SpecificationWorkspace() {
         />
       </section>
 
-      <section>
-        {hasPermission("AGENT_EXECUTE") && (
-          <button type="button" onClick={sendToAi} disabled={isProcessing}>
-            Enviar para IA
-          </button>
-        )}
-        {isProcessing && <p>Processando em segundo plano (status: {execution?.status})…</p>}
-        {execution?.status === "FAILED" && <p className="form-field-error">{execution.error}</p>}
+      {demandId && <SystemSelection demandId={demandId} />}
 
-        {proposal && (
-          <div>
-            <h2>Proposta da IA</h2>
-            <p>{proposal.summary}</p>
-            <ProposalList title="Requisitos de negócio" items={proposal.businessRequirements} />
-            <ProposalList title="Regras de negócio" items={proposal.businessRules} />
-            <ProposalList title="Critérios de aceite" items={proposal.acceptanceCriteria} />
-            <ProposalList title="Fluxos" items={proposal.flows} />
-            <ProposalList title="Requisitos técnicos" items={proposal.technicalRequirements} />
-            <ProposalList title="Artefatos identificados" items={proposal.identifiedArtifacts} />
-            <ProposalList title="Riscos" items={proposal.risks} />
-            <ProposalList title="Perguntas em aberto" items={proposal.questions} />
-            {proposal.changeSummary && (
-              <div>
-                <h2>Resumo do impacto (incremento)</h2>
-                <ProposalList title="Regras adicionadas" items={proposal.changeSummary.rulesAdded} />
-                <ProposalList
-                  title="Artefatos impactados"
-                  items={proposal.changeSummary.artifactsImpacted}
-                />
-                <ProposalList title="APIs impactadas" items={proposal.changeSummary.apisImpacted} />
-                <ProposalList title="Dados impactados" items={proposal.changeSummary.dataImpacted} />
-                <ProposalList
-                  title="Testes sugeridos"
-                  items={proposal.changeSummary.suggestedTests}
-                />
-              </div>
-            )}
-            {hasPermission("SPECIFICATION_WRITE") && (
-              <button type="button" onClick={() => acceptProposal(proposal.specifyMarkdown)}>
-                Aceitar proposta (specify.md)
-              </button>
-            )}
-            {hasPermission("AGENT_EXECUTE") && (
-              <button type="button" onClick={sendToAi}>
-                Nova rodada
-              </button>
-            )}
-          </div>
-        )}
-      </section>
+      {demandId && <PromptSpecPanel demandId={demandId} business={businessText} technical={technicalText} />}
 
       <section>
         <h2>Editar diretamente</h2>
@@ -293,17 +217,225 @@ export function SpecificationWorkspace() {
   );
 }
 
-function ProposalList({ title, items }: { title: string; items: string[] }) {
-  if (!items?.length) return null;
+/**
+ * feature 005 User Story 3 (FR-007-FR-010): seleção de Sistemas — restrita
+ * aos associados ao Cliente da demanda — e, por Sistema selecionado, seus
+ * Artefatos ativos.
+ */
+function SystemSelection({ demandId }: { demandId: string }) {
+  const { hasPermission } = useAuth();
+  const { data: systemsData } = useDemandSystems(demandId);
+  const setSystems = useSetDemandSystems(demandId);
+  const setArtifacts = useSetDemandSystemArtifacts(demandId);
+
+  const [selectedSystemIds, setSelectedSystemIds] = useState<string[]>([]);
+  // Kept as full objects (not just ids) so already-selected Artefatos still
+  // show their name/type even when they're not part of the current search
+  // results — a Sistema can carry hundreds of Artefatos (real case: ~300),
+  // so "available" is a capped/searched slice, never the full set.
+  const [selectedArtifacts, setSelectedArtifacts] = useState<SystemArtifact[]>([]);
+  const [artifactSearch, setArtifactSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const { data: artifactsData } = useDemandSystemArtifacts(demandId, debouncedSearch, selectedSystemIds);
+
+  useEffect(() => {
+    if (systemsData) setSelectedSystemIds(systemsData.selected.map((s) => s.id));
+  }, [systemsData]);
+  // Only seeds from the server once per demand — afterwards this state is
+  // the source of truth (see toggle/save below). Keyed by demandId (not by
+  // "length === 0") so removing the last selected Artefato doesn't get
+  // immediately overwritten by the still-cached server selection.
+  const seededArtifactsFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (artifactsData && seededArtifactsFor.current !== demandId) {
+      setSelectedArtifacts(artifactsData.selected);
+      seededArtifactsFor.current = demandId;
+    }
+  }, [artifactsData, demandId]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => setDebouncedSearch(artifactSearch), 300);
+    return () => clearTimeout(timeout);
+  }, [artifactSearch]);
+
+  const canWrite = hasPermission("DEMAND_SYSTEM_WRITE");
+  const selectedArtifactIds = new Set(selectedArtifacts.map((a) => a.id));
+
+  function toggleSystem(id: string) {
+    setSelectedSystemIds((current) =>
+      current.includes(id) ? current.filter((s) => s !== id) : [...current, id],
+    );
+  }
+
+  function addArtifact(artifact: SystemArtifact) {
+    setSelectedArtifacts((current) =>
+      current.some((a) => a.id === artifact.id) ? current : [...current, artifact],
+    );
+    // clears the filter (not the open state) so the dropdown keeps showing
+    // fresh results and the field stays focused for the next pick — supports
+    // adding several Artefatos in a row without reopening the dropdown
+    setArtifactSearch("");
+  }
+
+  function removeArtifact(id: string) {
+    setSelectedArtifacts((current) => current.filter((a) => a.id !== id));
+  }
+
+  async function saveSelection() {
+    setSaveMessage(null);
+    await setSystems.mutateAsync(selectedSystemIds);
+    await setArtifacts.mutateAsync(selectedArtifacts.map((a) => a.id));
+    setSaveMessage("Seleção salva com sucesso.");
+  }
+
   return (
-    <div>
-      <strong>{title}</strong>
+    <section>
+      <h2>Sistemas e Artefatos Envolvidos</h2>
+      {!systemsData?.available.length && <p>Nenhum Sistema associado a este Cliente.</p>}
       <ul>
-        {items.map((item, i) => (
-          <li key={i}>{item}</li>
+        {systemsData?.available.map((system) => (
+          <li key={system.id}>
+            <label>
+              <input
+                type="checkbox"
+                checked={selectedSystemIds.includes(system.id)}
+                onChange={() => toggleSystem(system.id)}
+                disabled={!canWrite}
+              />{" "}
+              {system.name}
+            </label>
+          </li>
         ))}
       </ul>
-    </div>
+
+      {selectedSystemIds.length > 0 && (
+        <>
+          <h3>Artefatos selecionados</h3>
+          {selectedArtifacts.length === 0 && <p>Nenhum artefato selecionado ainda.</p>}
+          <div className="chip-list">
+            {selectedArtifacts.map((artifact) => (
+              <span className="chip" key={artifact.id}>
+                {artifact.name} ({artifact.type})
+                {canWrite && (
+                  <button
+                    type="button"
+                    className="chip-remove"
+                    title="Remover"
+                    aria-label={`Remover ${artifact.name}`}
+                    onClick={() => removeArtifact(artifact.id)}
+                  >
+                    ×
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+
+          {canWrite && (
+            <div className="autocomplete">
+              <h3>Adicionar artefato</h3>
+              <input
+                type="search"
+                placeholder="Buscar por nome…"
+                value={artifactSearch}
+                onFocus={() => setIsSearchOpen(true)}
+                onBlur={() => setTimeout(() => setIsSearchOpen(false), 150)}
+                onChange={(e) => {
+                  setArtifactSearch(e.target.value);
+                  setIsSearchOpen(true);
+                }}
+              />
+              {isSearchOpen && (
+                <ul className="autocomplete-dropdown">
+                  {artifactsData?.available
+                    .filter((a) => !selectedArtifactIds.has(a.id))
+                    .map((artifact) => (
+                      <li key={artifact.id}>
+                        {/* preventDefault keeps the input focused (no blur) so the dropdown
+                            stays open and the field stays filterable across multiple picks */}
+                        <button
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            addArtifact(artifact);
+                          }}
+                        >
+                          {artifact.name} ({artifact.type})
+                        </button>
+                      </li>
+                    ))}
+                  {artifactsData && artifactsData.available.filter((a) => !selectedArtifactIds.has(a.id)).length === 0 && (
+                    <li className="autocomplete-empty">
+                      {artifactSearch ? "Nenhum artefato encontrado." : "Nenhum artefato disponível."}
+                    </li>
+                  )}
+                </ul>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {canWrite && (
+        <button type="button" onClick={saveSelection} disabled={setSystems.isPending || setArtifacts.isPending}>
+          Salvar seleção
+        </button>
+      )}
+      {saveMessage && <p className="form-success">{saveMessage}</p>}
+    </section>
+  );
+}
+
+/**
+ * feature 005 User Story 4 (FR-014-FR-019): substitui o "Enviar para IA" —
+ * consolida negócio/técnico/Cliente/Sistemas/Artefatos no template
+ * `prompt-spec-kit.md`, exibe o resultado e permite copiar. Nenhuma chamada
+ * de LLM ocorre aqui (FR-018).
+ */
+function PromptSpecPanel({
+  demandId,
+  business,
+  technical,
+}: {
+  demandId: string;
+  business: string;
+  technical: string;
+}) {
+  const { hasPermission } = useAuth();
+  const generatePrompt = useGeneratePromptSpec(demandId);
+  const [copied, setCopied] = useState(false);
+
+  async function generate() {
+    setCopied(false);
+    await generatePrompt.mutateAsync({ business, technical });
+  }
+
+  async function copyPrompt() {
+    if (!generatePrompt.data) return;
+    await navigator.clipboard.writeText(generatePrompt.data.prompt);
+    setCopied(true);
+  }
+
+  return (
+    <section>
+      <h2>Prompt SPEC</h2>
+      {hasPermission("SPEC_PROMPT_GENERATE") && (
+        <button type="button" onClick={generate} disabled={generatePrompt.isPending}>
+          Gerar Prompt SPEC
+        </button>
+      )}
+      {generatePrompt.data && (
+        <>
+          <textarea readOnly rows={16} value={generatePrompt.data.prompt} />
+          <button type="button" onClick={copyPrompt}>
+            Copiar Prompt
+          </button>
+          {copied && <span> Copiado!</span>}
+        </>
+      )}
+    </section>
   );
 }
 

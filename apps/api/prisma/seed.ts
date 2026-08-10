@@ -31,6 +31,14 @@ const PERMISSION_CATALOG = [
   "GIT_WRITE",
   "PR_CREATE",
   "AUDIT_READ",
+  // feature 005 (research.md §3): System/SystemArtifact catalog + demand
+  // selection + Prompt SPEC generation.
+  "SYSTEM_READ",
+  "SYSTEM_WRITE",
+  "SYSTEM_ARTIFACT_READ",
+  "SYSTEM_ARTIFACT_WRITE",
+  "DEMAND_SYSTEM_WRITE",
+  "SPEC_PROMPT_GENERATE",
 ] as const;
 
 const PROVIDER_CATALOG: { key: string; kind: ProviderKind }[] = [

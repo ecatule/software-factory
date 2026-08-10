@@ -12,7 +12,12 @@ the per-demand cockpit), [`specs/002-web-console/`](specs/002-web-console/)
 AI-assisted specification copilot, Technology catalog, and Increments), and
 [`specs/004-advanced-console-governance/`](specs/004-advanced-console-governance/)
 (environment/branch fields, granular RBAC permissions, richer Dashboard/Demands,
-tabbed Cockpit, manual Artifact creation) for the full spec-kit artifact sets, and
+tabbed Cockpit, manual Artifact creation), and
+[`specs/005-system-catalog-spec-prompt/`](specs/005-system-catalog-spec-prompt/)
+(Sistema/Artefato technical catalog, Client×Sistema association, Sistema/Artefato
+selection on the Especificação Assistida screen, and "Gerar Prompt SPEC" — a
+zero-LLM-call prompt generator replacing the direct "Enviar para IA" action there)
+for the full spec-kit artifact sets, and
 [`.specify/memory/constitution.md`](.specify/memory/constitution.md) for the
 project's non-negotiable principles.
 
@@ -31,15 +36,25 @@ apps/
 ├── api/            NestJS backend
 │   └── src/modules/
 │       ├── identity/       OIDC login/callback/session/logout, JWT refresh, RBAC guard
-│       ├── clients/        Client CRUD
+│       ├── clients/        Client CRUD; feature 005 adds `GET/PUT /clients/:id/systems`
+│       │                   (Client×Sistema N:N association)
 │       ├── projects/       Project CRUD (filterable by client)
+│       ├── systems/        System/SystemArtifact technical catalog (feature 005) — new,
+│       │                   independent of Project/Artifact (Clarifications 2026-08-10: a
+│       │                   real system can span multiple Client-scoped Project rows today,
+│       │                   which would have forced data consolidation to reuse Project)
 │       ├── providers/      DI wiring for Provider interfaces + Settings CRUD (Provider/
 │       │                   ProviderConfiguration) + `ProviderConfigurationResolver`, which
 │       │                   actually resolves the saved model/auth-profile per project+stage
 │       │                   at execution time (previously stored but never consulted)
 │       ├── demands/        Demand intake/tracking, cockpit + dashboard read-models,
 │       │                   enriched list (client/project/agent/PR filters) + Monday import
-│       │                   (feature 004)
+│       │                   (feature 004). Feature 005 adds `GET/PUT :id/systems` and
+│       │                   `:id/system-artifacts` (Sistema/Artefato selection for the
+│       │                   Especificação Assistida screen) and `PromptSpecService`
+│       │                   (`POST :id/prompt-spec` — consolidates demand context into the
+│       │                   versioned `apps/api/prompts/prompt-spec-kit.md` template, zero
+│       │                   LLM calls, replacing the direct "Enviar para IA" action there)
 │       ├── dashboard/      Stage-count summary + recent demands, plus feature 004's richer
 │       │                   KPIs (totals, PRs open, tests failing, agents running, by-client,
 │       │                   avg time per stage via `AuditLog` STAGE_TRANSITION rows)
@@ -74,13 +89,18 @@ apps/
 │                            granular RBAC: DEMAND_READ/WRITE, SPECIFICATION_WRITE/APPROVE,
 │                            AGENT_EXECUTE, GIT_WRITE, PR_CREATE, AUDIT_READ)
 │
-└── web/            React frontend — 17 screens (Login, Dashboard, Clients, Projects,
-                    Technologies, Demands, Workspaces, Artifacts, Especificação
-                    Assistida (AI copilot), Agents, Executions, Tests, Repositories,
+└── web/            React frontend — 18 screens (Login, Dashboard, Clients, Projects,
+                    Sistemas (feature 005), Technologies, Demands, Workspaces, Artifacts,
+                    Especificação Assistida, Agents, Executions, Tests, Repositories,
                     Git Activity, Audit, Settings). Feature 004: the Demand Cockpit is a
                     9-tab shell (Summary/Specification/Artifacts/Tasks/Development/Tests/
                     Git/Timeline/Audit) with the active tab in the URL
-                    (`/demands/:demandId/:tab`) instead of one long stacked page.
+                    (`/demands/:demandId/:tab`) instead of one long stacked page. Feature
+                    005: Especificação Assistida no longer sends anything to an LLM
+                    directly — "Enviar para IA" was removed from its JSX (the
+                    specification_copilot/"Modo B" flow behind it is untouched, still
+                    reachable via Agents.tsx) in favor of selecting Sistemas/Artefatos and
+                    a "Gerar Prompt SPEC" action the analyst copies into any AI manually.
 
 packages/
 ├── domain/          Provider interfaces (DemandProvider, LLMProvider, SDDProvider,

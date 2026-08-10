@@ -8,6 +8,7 @@ import { IncrementsModule } from "../increments/increments.module";
 import { ExecutionsModule } from "../executions/executions.module";
 import { DemandsController } from "./demands.controller";
 import { DemandsService } from "./demands.service";
+import { PromptSpecService } from "./prompt-spec.service";
 
 @Module({
   imports: [
@@ -20,7 +21,7 @@ import { DemandsService } from "./demands.service";
     ExecutionsModule,
   ],
   controllers: [DemandsController],
-  providers: [DemandsService],
+  providers: [DemandsService, PromptSpecService],
   exports: [DemandsService],
 })
 export class DemandsModule {}

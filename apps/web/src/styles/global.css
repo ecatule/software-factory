@@ -486,6 +486,135 @@ select:focus {
   cursor: pointer;
 }
 
+/* follow-up: icon-only action buttons in a DataTable cell (e.g. Systems'
+   Artefatos grid) — compact, title/aria-label carry the accessible name. */
+.icon-actions {
+  display: inline-flex;
+  gap: var(--space-2);
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  background: var(--color-surface-alt);
+}
+
+.icon-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.systems-artifacts-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+/* follow-up: selected Sistema Artefatos on the SPEC screen, shown as chips
+   instead of a plain list. */
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 6px 4px 12px;
+  border-radius: var(--radius-full);
+  background: var(--color-neutral-soft);
+  color: var(--color-text);
+  font-size: 0.85rem;
+}
+
+.chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chip-remove:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}
+
+/* follow-up: artifact search box becomes an autocomplete — a dropdown of
+   matches that only shows while the field is focused, instead of an
+   always-visible list (a Sistema can carry hundreds of Artefatos). */
+.autocomplete {
+  position: relative;
+}
+
+.autocomplete-dropdown {
+  position: absolute;
+  z-index: 10;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  margin-top: 4px;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+}
+
+.autocomplete-dropdown li {
+  list-style: none;
+}
+
+.autocomplete-dropdown li button {
+  display: block;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.autocomplete-dropdown li button:hover {
+  background: var(--color-surface-alt);
+}
+
+.autocomplete-empty {
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
 .data-table-loading,
 .data-table-empty {
   padding: var(--space-6);
@@ -538,6 +667,24 @@ select:focus {
   color: var(--color-danger);
 }
 
+/* `.form-error` is used across many screens (Demands, Projects, Settings,
+   Systems, ...) but only `.form-field-error` above had styling — messages
+   rendered invisibly (no color/weight). `.form-success` is new, same shape. */
+.form-error,
+.form-success {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: var(--space-2) 0;
+}
+
+.form-error {
+  color: var(--color-danger);
+}
+
+.form-success {
+  color: var(--color-success);
+}
+
 /* Modal -------------------------------------------------------------------------- */
 
 .modal-overlay {
@@ -562,6 +709,13 @@ select:focus {
   max-height: 90vh;
   overflow-y: auto;
   animation: pop-in 160ms ease;
+}
+
+/* follow-up: Sistemas/Artefatos screens can carry hundreds of rows (real
+   case: ~300 Artefatos under one Sistema) — the default 480px modal is too
+   cramped for a searchable, paginated list alongside the edit form. */
+.modal-wide {
+  max-width: 800px;
 }
 
 .modal-header {

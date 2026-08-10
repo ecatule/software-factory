@@ -116,6 +116,10 @@ export class DeveloperAgentService {
   /**
    * spec FR-017: files outside the originally planned scope are recorded as
    * DISCOVERED with a justification — never silently added as MODIFIED.
+   * feature 005 FR-023: whenever at least one file is DISCOVERED, the
+   * underlying `Artifact` (name/type) is also cataloged as a `SystemArtifact`
+   * under the demand's selected Sistema, so the reusable catalog benefits
+   * from the same discovery.
    */
   async recordImplementationFiles(demandId: string, artifactId: string, filesChanged: string[]) {
     const plannedFiles = new Set(
@@ -126,7 +130,7 @@ export class DeveloperAgentService {
       ).map((f) => f.filePath),
     );
 
-    return Promise.all(
+    const created = await Promise.all(
       filesChanged.map((filePath) =>
         this.prisma.db.artifactFile.create({
           data: {
@@ -140,6 +144,51 @@ export class DeveloperAgentService {
         }),
       ),
     );
+
+    if (created.some((f) => f.changeType === "DISCOVERED")) {
+      const artifact = await this.prisma.db.artifact.findUnique({ where: { id: artifactId } });
+      if (artifact) {
+        await this.ensureSystemArtifactCataloged(demandId, artifact.name, artifact.type);
+      }
+    }
+
+    return created;
+  }
+
+  /**
+   * feature 005 FR-023 (research.md §6, Clarifications 2026-08-10): catalogs
+   * `name`/`type` as a `SystemArtifact` under the demand's first selected
+   * Sistema, and immediately selects it for this demand (`DemandSystemArtifact`)
+   * — preserves today's visible behavior (the item shows up on the demand)
+   * while also enriching the reusable catalog. No-op if the demand has no
+   * Sistema selected yet (spec.md Edge Cases — nothing to catalog into).
+   * Idempotent: reuses an existing `SystemArtifact` with the same
+   * `(systemId, name)` instead of creating a duplicate on every discovery.
+   */
+  async ensureSystemArtifactCataloged(demandId: string, name: string, type: string): Promise<void> {
+    const [firstSelection] = await this.prisma.db.demandSystem.findMany({
+      where: { demandId, stAtivo: true },
+      orderBy: { systemId: "asc" },
+      take: 1,
+    });
+    if (!firstSelection) return;
+
+    let systemArtifact = await this.prisma.db.systemArtifact.findFirst({
+      where: { systemId: firstSelection.systemId, name },
+    });
+    if (!systemArtifact) {
+      systemArtifact = await this.prisma.db.systemArtifact.create({
+        data: { systemId: firstSelection.systemId, name, type },
+      });
+    }
+
+    await this.prisma.db.demandSystemArtifact.upsert({
+      where: {
+        demandId_systemArtifactId: { demandId, systemArtifactId: systemArtifact.id },
+      },
+      update: { stAtivo: true },
+      create: { demandId, systemArtifactId: systemArtifact.id },
+    });
   }
 
   private buildBranchName(policy: string, demand: { type: string; externalId: string }): string {

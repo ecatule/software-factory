@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { DataTable, FormField, Modal } from "@software-factory/ui";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useClientsList, useCreateClient, useUpdateClient } from "../services/useClients";
+import { useClientSystems, useSetClientSystems, useSystemsList } from "../services/useSystems";
 import type { Client } from "../services/types";
 
 interface ClientFormValues {
@@ -77,7 +78,51 @@ export function Clients() {
           />
           <button type="submit">Save</button>
         </form>
+        {editing && <ClientSystems clientId={editing.id} />}
       </Modal>
     </div>
+  );
+}
+
+/** feature 005 User Story 2: Sistemas associados a este Cliente (N:N). */
+function ClientSystems({ clientId }: { clientId: string }) {
+  const { data: allSystems } = useSystemsList();
+  const { data: associated } = useClientSystems(clientId);
+  const setSystems = useSetClientSystems(clientId);
+  const [selected, setSelected] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (associated) setSelected(associated.map((s) => s.id));
+  }, [associated]);
+
+  function toggle(id: string) {
+    setSelected((current) =>
+      current.includes(id) ? current.filter((s) => s !== id) : [...current, id],
+    );
+  }
+
+  const activeSystems = allSystems?.items.filter((s) => s.stAtivo) ?? [];
+
+  return (
+    <section>
+      <h2>Sistemas</h2>
+      <ul>
+        {activeSystems.map((system) => (
+          <li key={system.id}>
+            <label>
+              <input
+                type="checkbox"
+                checked={selected.includes(system.id)}
+                onChange={() => toggle(system.id)}
+              />{" "}
+              {system.name}
+            </label>
+          </li>
+        ))}
+      </ul>
+      <button type="button" onClick={() => setSystems.mutate(selected)}>
+        Save systems
+      </button>
+    </section>
   );
 }

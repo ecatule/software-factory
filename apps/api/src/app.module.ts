@@ -24,6 +24,7 @@ import { RepositoriesModule } from "./modules/repositories/repositories.module";
 import { TechnologiesModule } from "./modules/technologies/technologies.module";
 import { IncrementsModule } from "./modules/increments/increments.module";
 import { RolesModule } from "./modules/roles/roles.module";
+import { SystemsModule } from "./modules/systems/systems.module";
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { RolesModule } from "./modules/roles/roles.module";
     TechnologiesModule,
     IncrementsModule,
     RolesModule,
+    SystemsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
