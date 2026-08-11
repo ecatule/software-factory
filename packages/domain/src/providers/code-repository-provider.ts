@@ -39,8 +39,20 @@ export interface CodeRepositoryProvider {
   checkoutBranch(targetPath: string, branchName: string): Promise<void>;
   getFile(externalReference: string, branch: string, path: string): Promise<FileRef>;
   searchCode(externalReference: string, query: string): Promise<FileRef[]>;
-  /** `targetPath` is the local clone's absolute path (same convention as `checkoutBranch`). */
-  commit(externalReference: string, targetPath: string, branch: string, message: string): Promise<CommitRef>;
+  /**
+   * `targetPath` is the local clone's absolute path (same convention as
+   * `checkoutBranch`). `filePaths`, when given, stages ONLY those paths
+   * (relative to `targetPath`) instead of every dirty file — needed so an
+   * automated commit never sweeps up unrelated changes that were already
+   * sitting in the working tree before this run started.
+   */
+  commit(
+    externalReference: string,
+    targetPath: string,
+    branch: string,
+    message: string,
+    filePaths?: string[],
+  ): Promise<CommitRef>;
   push(externalReference: string, targetPath: string, branch: string): Promise<void>;
   createPullRequest(
     externalReference: string,

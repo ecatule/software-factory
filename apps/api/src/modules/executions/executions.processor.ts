@@ -15,6 +15,7 @@ import { WorkflowsService } from "../workflows/workflows.service";
 import { SpecificationContextService } from "../specifications/specification-context.service";
 import { IncrementsService } from "../increments/increments.service";
 import { ProviderConfigurationResolver } from "../providers/provider-configuration.resolver";
+import { GitService } from "../git/git.service";
 import { DeveloperAgentService } from "./developer-agent.service";
 import type { ExecutionJobData } from "./executions.service";
 
@@ -42,6 +43,7 @@ export class ExecutionsProcessor extends WorkerHost {
     private readonly prisma: PrismaService,
     private readonly workflows: WorkflowsService,
     private readonly developerAgent: DeveloperAgentService,
+    private readonly gitService: GitService,
     private readonly specificationContext: SpecificationContextService,
     private readonly increments: IncrementsService,
     private readonly providerConfiguration: ProviderConfigurationResolver,
@@ -104,6 +106,19 @@ export class ExecutionsProcessor extends WorkerHost {
         // to refuse before the Developer Agent can read/act on production data.
         await updateProgress("safety-check");
         await this.developerAgent.enforceProductionSafety(execution.demandId, workspacePath);
+
+        // follow-up: snapshotted BEFORE `implement` runs so the post-implement
+        // auto-commit (below) can tell "changed by this run" apart from files
+        // that were already dirty in the working tree beforehand (e.g. local,
+        // unrelated edits) — never staged/committed automatically.
+        const artifactRepoPaths = await this.developerAgent.resolveArtifactRepositoryPaths(
+          execution.demandId,
+          workspacePath,
+        );
+        const dirtyBefore = await this.developerAgent.snapshotDirtyFiles(
+          artifactRepoPaths.map((link) => link.repoPath),
+        );
+
         const context = await this.providerConfiguration.resolveSddContext(
           demand.projectId,
           "implement",
@@ -181,9 +196,51 @@ export class ExecutionsProcessor extends WorkerHost {
           );
         }
 
+        // follow-up: commits+pushes only the files that became dirty DURING
+        // this run (per-repo diff against the `dirtyBefore` snapshot) — a
+        // real, live-observed case had unrelated pre-existing uncommitted
+        // changes (production-URL sanitization from an earlier run) sitting
+        // in the same working tree; a naive "commit everything dirty" would
+        // have swept those into this feature's commit.
+        await updateProgress("commit");
+        const dirtyAfter = await this.developerAgent.snapshotDirtyFiles(
+          artifactRepoPaths.map((link) => link.repoPath),
+        );
+        const commitMessage = `feat[${demand.externalId}] ${demand.title.trim()}\n\nCommit automatico gerado pelo Developer Agent (execucao ${execution.id}).`;
+        // follow-up: a per-artifact commit failure (most likely the Test
+        // Gate, spec FR-021 — this project has real, working test suites
+        // configured) must NOT mark a genuinely successful `implement` as a
+        // FAILED execution. Caught individually and reported in `output`
+        // instead of thrown, so "implemented but not committed yet" stays
+        // visibly distinct from "implementation itself failed".
+        const commitResults: Array<
+          { artifactId: string; sha: string } | { artifactId: string; error: string }
+        > = [];
+        for (const link of artifactRepoPaths) {
+          const before = dirtyBefore.get(link.repoPath) ?? new Set<string>();
+          const after = dirtyAfter.get(link.repoPath) ?? new Set<string>();
+          const newFiles = [...after].filter((filePath) => !before.has(filePath));
+          if (newFiles.length === 0) continue;
+          try {
+            const commit = await this.gitService.commit(
+              execution.demandId,
+              link.artifactId,
+              commitMessage,
+              newFiles,
+              execution.id,
+            );
+            commitResults.push({ artifactId: link.artifactId, sha: commit.sha });
+          } catch (error) {
+            commitResults.push({
+              artifactId: link.artifactId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+
         await this.prisma.db.agentExecution.update({
           where: { id: execution.id },
-          data: { status: "COMPLETED", finishedAt: new Date(), output: result },
+          data: { status: "COMPLETED", finishedAt: new Date(), output: { ...result, commits: commitResults } },
         });
         await this.workflows.advanceToStage(execution.demandId, "TESTING");
         return;

@@ -1,4 +1,4 @@
-import { exec } from "node:child_process";
+import { exec, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type {
   BranchRef,
@@ -11,6 +11,7 @@ import type {
 } from "@software-factory/domain";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 interface GitHubConfig {
   apiUrl: string;
@@ -93,9 +94,17 @@ export class GitHubRepositoryProvider implements CodeRepositoryProvider {
     targetPath: string,
     branch: string,
     message: string,
+    filePaths?: string[],
   ): Promise<CommitRef> {
     await execAsync(`git checkout ${branch}`, { cwd: targetPath });
-    await execAsync(`git add -A`, { cwd: targetPath });
+    if (filePaths && filePaths.length > 0) {
+      // execFile (argv array, no shell) — file paths come from `git status
+      // --porcelain` output and could contain spaces/quotes; never safe to
+      // interpolate into a shell string the way the -A case below does.
+      await execFileAsync("git", ["add", "--", ...filePaths], { cwd: targetPath });
+    } else {
+      await execAsync(`git add -A`, { cwd: targetPath });
+    }
     await execAsync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { cwd: targetPath });
     const { stdout } = await execAsync(`git rev-parse HEAD`, { cwd: targetPath });
     return { sha: stdout.trim() };

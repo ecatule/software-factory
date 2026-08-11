@@ -4,10 +4,15 @@ import { WorkflowsModule } from "../workflows/workflows.module";
 import { QueueModule } from "../../common/queue/queue.module";
 import { SpecificationsModule } from "../specifications/specifications.module";
 import { IncrementsModule } from "../increments/increments.module";
+// follow-up: GitModule (needed here so ExecutionsProcessor can auto-commit
+// after `implement`) itself needs DeveloperAgentModule, not this module —
+// importing GitModule directly would be circular (GitModule used to import
+// ExecutionsModule just for DeveloperAgentService).
+import { GitModule } from "../git/git.module";
+import { DeveloperAgentModule } from "./developer-agent.module";
 import { ExecutionsController } from "./executions.controller";
 import { ExecutionsService } from "./executions.service";
 import { ExecutionsProcessor } from "./executions.processor";
-import { DeveloperAgentService } from "./developer-agent.service";
 
 @Module({
   imports: [
@@ -16,9 +21,11 @@ import { DeveloperAgentService } from "./developer-agent.service";
     QueueModule,
     SpecificationsModule,
     IncrementsModule,
+    DeveloperAgentModule,
+    GitModule,
   ],
   controllers: [ExecutionsController],
-  providers: [ExecutionsService, ExecutionsProcessor, DeveloperAgentService],
-  exports: [ExecutionsService, DeveloperAgentService],
+  providers: [ExecutionsService, ExecutionsProcessor],
+  exports: [ExecutionsService, DeveloperAgentModule],
 })
 export class ExecutionsModule {}

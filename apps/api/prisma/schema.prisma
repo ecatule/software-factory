@@ -802,7 +802,13 @@ model Commit {
   demandId         String  @map("demand_id") @db.Uuid
   artifactId       String  @map("artifact_id") @db.Uuid
   taskReference    String? @map("task_reference")
-  testExecutionId  String  @map("test_execution_id") @db.Uuid
+  // follow-up: made optional — the Developer Agent's pipeline can now
+  // auto-commit after `implement` with no test-execution stage wired in yet
+  // (see GitService.commit), so requiring one unconditionally would make
+  // auto-commit impossible for any project without `requiredTestSuites`
+  // configured. Still required-in-practice whenever the Test Gate actually
+  // has suites to check (GitService.commit still enforces that).
+  testExecutionId  String? @map("test_execution_id") @db.Uuid
   agentExecutionId String? @map("agent_execution_id") @db.Uuid
 
   @@map("commits")

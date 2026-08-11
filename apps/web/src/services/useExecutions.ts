@@ -29,6 +29,7 @@ export const PIPELINE_STAGE_LABELS: Record<string, string> = {
   analyze: "Analisando consistência (/speckit-analyze)",
   checklist: "Gerando checklist (/speckit-checklist)",
   implement: "Implementando (/speckit-implement)",
+  commit: "Commitando alterações",
 };
 
 export function pipelineStageLabel(stage: string | null): string | null {

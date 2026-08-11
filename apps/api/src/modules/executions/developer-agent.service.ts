@@ -1,7 +1,9 @@
 import { Inject, Injectable } from "@nestjs/common";
+import { exec } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { access } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 import {
   CODE_REPOSITORY_PROVIDER,
   type CodeRepositoryProvider,
@@ -15,6 +17,8 @@ import {
 } from "./project-environment-config";
 import { assertRepositoriesAreProductionSafe, sanitizeRepositories } from "./production-reference.guard";
 import { composeOwnerRepo } from "./repository-reference";
+
+const execAsync = promisify(exec);
 
 interface ArtifactRepositoryLink {
   artifactId: string;
@@ -222,6 +226,45 @@ export class DeveloperAgentService {
   resolveClonePath(workspacePath: string, externalReference: string): string {
     const repoDirName = externalReference.split("/").pop() ?? externalReference;
     return path.join(workspacePath, "artefatos", repoDirName);
+  }
+
+  /** follow-up: public wrapper around `resolveArtifactRepositoryLinks` for callers (ExecutionsProcessor) that only need `(artifactId, repoPath)` pairs, not the full link shape. */
+  async resolveArtifactRepositoryPaths(
+    demandId: string,
+    workspacePath: string,
+  ): Promise<{ artifactId: string; repoPath: string }[]> {
+    const links = await this.resolveArtifactRepositoryLinks(demandId);
+    return links.map((link) => ({
+      artifactId: link.artifactId,
+      repoPath: this.resolveClonePath(workspacePath, link.externalReference),
+    }));
+  }
+
+  /**
+   * follow-up: snapshots each repo's dirty (uncommitted) file paths via
+   * `git status --porcelain`. Called BEFORE and AFTER `implement` so the
+   * automated post-implement commit can stage only files that became dirty
+   * DURING this run — never files that were already sitting uncommitted in
+   * the working tree beforehand (e.g. leftover local edits unrelated to
+   * this demand). Returns an empty set for a path that isn't a git repo.
+   */
+  async snapshotDirtyFiles(repoPaths: string[]): Promise<Map<string, Set<string>>> {
+    const snapshot = new Map<string, Set<string>>();
+    for (const repoPath of repoPaths) {
+      try {
+        const { stdout } = await execAsync("git status --porcelain", { cwd: repoPath });
+        const files = new Set(
+          stdout
+            .split("\n")
+            .map((line) => line.slice(3).trim())
+            .filter(Boolean),
+        );
+        snapshot.set(repoPath, files);
+      } catch {
+        snapshot.set(repoPath, new Set());
+      }
+    }
+    return snapshot;
   }
 
   /**

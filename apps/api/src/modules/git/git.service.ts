@@ -18,9 +18,10 @@ export class GitService {
 
   /**
    * spec FR-021 (Test Gate): no commit may be created for a demand while any
-   * required test suite's most recent run is not PASSED.
+   * required test suite's most recent run is not PASSED. Returns the
+   * project so callers that also need it (`commit()`) don't re-fetch it.
    */
-  async assertTestGatePassed(demandId: string): Promise<void> {
+  async assertTestGatePassed(demandId: string) {
     const demand = await this.prisma.db.demand.findUniqueOrThrow({ where: { id: demandId } });
     const project = await this.prisma.db.project.findUniqueOrThrow({
       where: { id: demand.projectId },
@@ -43,6 +44,7 @@ export class GitService {
         HttpStatus.UNPROCESSABLE_ENTITY,
       );
     }
+    return project;
   }
 
   /**
@@ -50,9 +52,21 @@ export class GitService {
    * linking the commit to the demand, its artifact, and the test execution
    * that authorized it. Re-uses the same branch T061/T073 created — never a
    * second, independent branch-creation path (spec Edge Cases).
+   *
+   * `filePaths` (optional): stages only these paths instead of every dirty
+   * file — used by the Developer Agent's automated post-implement commit so
+   * unrelated pre-existing working-tree changes never get swept in.
+   * `agentExecutionId` (optional): links the Commit back to the
+   * AgentExecution that produced it, when called from that automated path.
    */
-  async commit(demandId: string, artifactId: string, message: string) {
-    await this.assertTestGatePassed(demandId);
+  async commit(
+    demandId: string,
+    artifactId: string,
+    message: string,
+    filePaths?: string[],
+    agentExecutionId?: string,
+  ) {
+    const project = await this.assertTestGatePassed(demandId);
 
     const artifact = await this.prisma.db.artifact.findUnique({
       where: { id: artifactId },
@@ -76,10 +90,21 @@ export class GitService {
       where: { id: branch.repositoryId },
     });
     const externalReference = composeOwnerRepo(repository.externalReference, artifact.name);
-    const latestTest = await this.prisma.db.testExecution.findFirstOrThrow({
-      where: { demandId },
-      orderBy: { startedAt: "desc" },
-    });
+    // follow-up: only REQUIRED when the project actually has required test
+    // suites (the Test Gate above already enforces those passed) — the
+    // Developer Agent's pipeline doesn't run a test stage yet, so demanding
+    // a TestExecution row unconditionally would make auto-commit impossible
+    // for every project that (like most today) has none configured.
+    const latestTest =
+      project.requiredTestSuites.length > 0
+        ? await this.prisma.db.testExecution.findFirstOrThrow({
+            where: { demandId },
+            orderBy: { startedAt: "desc" },
+          })
+        : await this.prisma.db.testExecution.findFirst({
+            where: { demandId },
+            orderBy: { startedAt: "desc" },
+          });
 
     const workspacePath = await this.developerAgent.resolveWorkspacePath(demandId);
     const targetPath = this.developerAgent.resolveClonePath(workspacePath, externalReference);
@@ -89,6 +114,7 @@ export class GitService {
       targetPath,
       branch.name,
       message,
+      filePaths,
     );
     await this.codeRepositoryProvider.push(externalReference, targetPath, branch.name);
 
@@ -98,7 +124,8 @@ export class GitService {
         sha: commitRef.sha,
         demandId,
         artifactId,
-        testExecutionId: latestTest.id,
+        testExecutionId: latestTest?.id,
+        agentExecutionId,
       },
     });
   }
