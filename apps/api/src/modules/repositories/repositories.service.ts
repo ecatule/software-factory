@@ -1,12 +1,17 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { paginate } from "../../common/pagination/paginate";
-import { UpdateRepositoryDto } from "./dto/repository.dto";
+import { CreateRepositoryDto, UpdateRepositoryDto } from "./dto/repository.dto";
 
 /** spec 002 FR-024/FR-025: repositories were only ever created implicitly by US6/US8's Developer Agent (001) — never listed. */
 @Injectable()
 export class RepositoriesService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /** follow-up: registers the git address (`owner/repo`) a Project's Developer Agent runs clone/branch/commit/PR against. */
+  create(dto: CreateRepositoryDto) {
+    return this.prisma.db.repository.create({ data: dto });
+  }
 
   list(projectId: string | undefined, page: number, pageSize: number) {
     const where = projectId ? { projectId } : undefined;

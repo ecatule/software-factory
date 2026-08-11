@@ -34,10 +34,7 @@ export function useUpdateProject() {
       technologies?: string[];
       branchNamingPolicy?: string;
       requiredTestSuites?: string[];
-      productionBranch?: string;
-      homologationBranch?: string;
-      homologationEnvironment?: string;
-      productionEnvironment?: string;
+      constitution?: string;
     }) => apiPatch<Project>(`/projects/${id}`, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
   });

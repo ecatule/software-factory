@@ -48,7 +48,7 @@ export class SpecificationsService {
 
   listVersions(specificationId: string) {
     return this.prisma.db.specificationVersion.findMany({
-      where: { specificationId },
+      where: { specificationId, stAtivo: true },
       orderBy: { versionNumber: "asc" },
     });
   }
@@ -96,18 +96,50 @@ export class SpecificationsService {
     return newVersion;
   }
 
-  /** spec FR-024/FR-025 (User Story 1, clarify addition): the direct-upload alternative. */
+  /**
+   * spec FR-024/FR-025 (User Story 1, clarify addition): the direct-upload
+   * alternative. follow-up (live-validation finding): previously scoped to
+   * whichever ONE `specificationId` the form happened to be on, and picked
+   * only ONE of `specifyMarkdown`/`planMarkdown` via `??` (which doesn't
+   * fall back on an empty string, only null/undefined) — pasting both
+   * fields silently lost one of them regardless of which page (SPEC or
+   * PLAN) the upload was launched from. Now routes each non-empty field to
+   * its OWN Specification for the same demand — `ensureForDemand` creates
+   * the sibling document if it doesn't exist yet — so uploading both at
+   * once from either page correctly creates both versions.
+   */
   async uploadVersion(specificationId: string, dto: UploadSpecificationVersionDto) {
-    const content = dto.specifyMarkdown ?? dto.planMarkdown;
-    if (!content || !content.trim()) {
+    const specification = await this.getSpecification(specificationId);
+    const reason = dto.reason;
+
+    const created = [];
+    if (dto.specifyMarkdown?.trim()) {
+      const spec = await this.ensureForDemand(specification.demandId, "SPEC");
+      created.push(
+        await this.createVersion(spec.id, {
+          content: dto.specifyMarkdown,
+          reason: reason ?? "Uploaded specify.md",
+          source: "UPLOADED",
+        }),
+      );
+    }
+    if (dto.planMarkdown?.trim()) {
+      const plan = await this.ensureForDemand(specification.demandId, "PLAN");
+      created.push(
+        await this.createVersion(plan.id, {
+          content: dto.planMarkdown,
+          reason: reason ?? "Uploaded plan.md",
+          source: "UPLOADED",
+        }),
+      );
+    }
+
+    if (created.length === 0) {
       throw new BadRequestException(
         "Upload requires non-empty specifyMarkdown or planMarkdown content.",
       );
     }
-    return this.createVersion(
-      specificationId,
-      { content, reason: dto.reason ?? "Uploaded from an external source", source: "UPLOADED" },
-    );
+    return created;
   }
 
   /** spec FR-010–FR-013: only the latest, non-terminal version may be approved. */
@@ -197,6 +229,43 @@ export class SpecificationsService {
       { content: target.content, reason: `Restored from version ${versionNumber}` },
       actorUserId,
     );
+  }
+
+  /**
+   * follow-up: "Restore" always creates a new version (never mutates) — if
+   * the analyst decides not to approve it after all, they need a way to
+   * discard it. Soft-delete only (constitution: no physical delete) — just
+   * `stAtivo: false`, blocked for an already-APPROVED version, which is
+   * meant to stay a permanent record. Repoints `currentVersionId` to the
+   * most recent remaining active version if the deactivated one was current.
+   */
+  async deactivateVersion(specificationId: string, versionNumber: number) {
+    const specification = await this.getSpecification(specificationId);
+    const target = await this.getVersionByNumber(specificationId, versionNumber);
+
+    if (target.status === "APPROVED") {
+      throw new ConflictException(
+        `Specification version ${versionNumber} is already APPROVED and cannot be deleted.`,
+      );
+    }
+
+    await this.prisma.db.specificationVersion.update({
+      where: { id: target.id },
+      data: { stAtivo: false },
+    });
+
+    if (specification.currentVersionId === target.id) {
+      const replacement = await this.prisma.db.specificationVersion.findFirst({
+        where: { specificationId, stAtivo: true },
+        orderBy: { versionNumber: "desc" },
+      });
+      await this.prisma.db.specification.update({
+        where: { id: specification.id },
+        data: { currentVersionId: replacement?.id ?? null },
+      });
+    }
+
+    return { deactivated: true };
   }
 
   private async getVersionByNumber(specificationId: string, versionNumber: number) {

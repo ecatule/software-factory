@@ -1,17 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { MarkdownEditor, DiffView, Badge } from "@software-factory/ui";
+import type { ColumnDef } from "@tanstack/react-table";
+import { MarkdownEditor, DiffView, Badge, DataTable, Modal } from "@software-factory/ui";
 import { apiGet } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useSpecification } from "../services/useSpecificationVersions";
 import {
   useApproveSpecificationVersion,
-  useCreateSpecificationVersion,
+  useDeactivateSpecificationVersion,
   useRestoreSpecificationVersion,
   useSpecificationDiff,
   useSpecificationVersionsList,
   useUploadSpecificationVersion,
+  type SpecificationVersion,
 } from "../services/useSpecificationVersions";
 import { useDemand } from "../services/useDemands";
 import { useProjectTechnologies } from "../services/useTechnologies";
@@ -23,19 +25,21 @@ import {
   type SystemArtifact,
 } from "../services/useSystems";
 import { useGeneratePromptSpec } from "../services/usePromptSpec";
+import type { Specification } from "../services/types";
 
 interface OriginBranch {
   productionBranch: string | null;
   homologationBranch: string | null;
-  source: "repository" | "project" | null;
+  source: "repository" | null;
 }
 
 /**
  * spec FR-002 (technical inputs) + spec 004 FR-003: a starting scaffold so
  * the analyst edits/completes sections instead of writing from a blank
  * page. "Branch de Origem" is now resolved automatically from the
- * repository backing the demand's known artifacts, or the project's own
- * branch fields (feature 004) — previously a manual-only placeholder.
+ * repository backing the demand's known artifacts (feature 004) —
+ * previously a manual-only placeholder. follow-up: production/homologation
+ * branch now lives only on Repository (no more Project-level fallback).
  * follow-up (feature 005): "# Telas"/"# APIs" were removed from here — that
  * information now comes from the "Sistemas e Artefatos Envolvidos"
  * selection below, not from free text.
@@ -48,11 +52,11 @@ function buildTechnicalTemplate(technologies: string, originBranch: OriginBranch
           originBranch.homologationBranch
             ? `- Homologação: ${originBranch.homologationBranch}`
             : null,
-          `- (resolvido a partir do ${originBranch.source === "repository" ? "repositório vinculado" : "projeto"})`,
+          "- (resolvido a partir do repositório vinculado)",
         ]
           .filter(Boolean)
           .join("\n")
-      : "- (informar manualmente — nenhum branch cadastrado no projeto/repositório ainda)";
+      : "- (informar manualmente — nenhum repositório vinculado a esta demanda ainda)";
 
   return [
     "# Branch de Origem",
@@ -70,21 +74,28 @@ const STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger"> 
   SUPERSEDED: "warning",
 };
 
+const WIZARD_STEPS = [
+  "Informações",
+  "Sistemas e Artefatos",
+  "Prompt SPEC",
+  "Anexar arquivos",
+] as const;
+
 /**
- * spec User Story 1: business/technical input → seleção de Sistemas/Artefatos →
- * "Gerar Prompt SPEC" (feature 005) → copiar manualmente para a IA de preferência.
- * O envio direto para IA (specification_copilot) saiu desta tela — FR-019,
- * feature 005 Assumptions: o código continua existindo, só não é mais
- * alcançado a partir daqui (ainda disparável via Agents.tsx).
+ * spec User Story 1: wizard de 4 etapas — Informações de negócio/técnicas →
+ * Sistemas e Artefatos Envolvidos → Prompt SPEC (gerado automaticamente a
+ * partir das etapas anteriores) → Anexar arquivos prontos. follow-up: era
+ * uma tela única com rolagem longa; virou wizard por pedido do usuário,
+ * com navegação livre entre etapas (todas ficam montadas, só escondidas
+ * via CSS, pra não perder seleção não salva ao navegar) e duas ações
+ * sempre acessíveis no topo (Histórico de versões, Outros documentos).
+ * "Editar diretamente" (editor de texto livre) foi removido — edição
+ * direta agora só acontece via "Anexar arquivos prontos" (etapa 4).
  */
 export function SpecificationWorkspace() {
   const { specificationId } = useParams<{ specificationId: string }>();
   const { hasPermission } = useAuth();
   const { data: specification } = useSpecification(specificationId ?? "");
-  const { data: versions } = useSpecificationVersionsList(specificationId ?? "");
-  const createVersion = useCreateSpecificationVersion(specificationId ?? "");
-  const restoreVersion = useRestoreSpecificationVersion(specificationId ?? "");
-  const approveVersion = useApproveSpecificationVersion(specificationId ?? "");
   const uploadVersion = useUploadSpecificationVersion(specificationId ?? "");
   const demandId = specification?.demandId ?? "";
   const { data: demand } = useDemand(demandId);
@@ -95,6 +106,7 @@ export function SpecificationWorkspace() {
     enabled: !!demandId,
   });
 
+  const [step, setStep] = useState(0);
   const [businessText, setBusinessText] = useState("");
   const [technicalText, setTechnicalText] = useState("");
   const [technicalTextTouched, setTechnicalTextTouched] = useState(false);
@@ -111,25 +123,8 @@ export function SpecificationWorkspace() {
     setTechnicalText(buildTechnicalTemplate(techList, originBranch));
   }, [projectTechnologies, originBranch, technicalTextTouched]);
 
-  const [draft, setDraft] = useState<string | null>(null);
-  const [diffPair, setDiffPair] = useState<[number, number] | null>(null);
-  const { data: diff } = useSpecificationDiff(
-    specificationId ?? "",
-    diffPair?.[0] ?? null,
-    diffPair?.[1] ?? null,
-  );
-
   if (!specificationId) return <p>No specification selected.</p>;
-  if (!versions || !specification) return <p>Loading…</p>;
-
-  const latest = versions[versions.length - 1];
-  const content = draft ?? latest?.content ?? "";
-
-  async function saveDraft() {
-    if (draft === null) return;
-    await createVersion.mutateAsync({ content: draft, reason: "Edited via console" });
-    setDraft(null);
-  }
+  if (!specification) return <p>Loading…</p>;
 
   async function handleUpload(specifyMarkdown: string, planMarkdown: string) {
     await uploadVersion.mutateAsync({ specifyMarkdown, planMarkdown, reason: "Uploaded from external source" });
@@ -139,81 +134,300 @@ export function SpecificationWorkspace() {
     <div className="specification-workspace-page">
       <h1>Especificação Assistida — {specification.documentType}</h1>
 
-      <section>
-        <h2>Informações de negócio</h2>
-        <textarea
-          placeholder="O que precisa ser feito, problema, objetivo, contexto, regras de negócio conhecidas, fluxos, critérios de aceite, restrições, observações"
-          rows={8}
-          value={businessText}
-          onChange={(e) => setBusinessText(e.target.value)}
-        />
-      </section>
+      <div className="wizard-header-actions">
+        <VersionHistoryButton specificationId={specificationId} hasPermission={hasPermission} />
+        {demandId && (
+          <SiblingDocumentsButton demandId={demandId} currentSpecificationId={specificationId} />
+        )}
+      </div>
 
-      <section>
-        <h2>Insumos técnicos</h2>
-        <textarea
-          placeholder="Telas/APIs/serviços/componentes/banco envolvidos, repositórios, observações técnicas"
-          rows={6}
-          value={technicalText}
-          onChange={(e) => {
-            setTechnicalTextTouched(true);
-            setTechnicalText(e.target.value);
-          }}
-        />
-      </section>
+      <WizardSteps current={step} onJump={setStep} />
 
-      {demandId && <SystemSelection demandId={demandId} />}
+      <div style={{ display: step === 0 ? undefined : "none" }}>
+        <section>
+          <h2>Informações de negócio</h2>
+          <textarea
+            placeholder="O que precisa ser feito, problema, objetivo, contexto, regras de negócio conhecidas, fluxos, critérios de aceite, restrições, observações"
+            rows={8}
+            value={businessText}
+            onChange={(e) => setBusinessText(e.target.value)}
+          />
+        </section>
 
-      {demandId && <PromptSpecPanel demandId={demandId} business={businessText} technical={technicalText} />}
+        <section>
+          <h2>Insumos técnicos</h2>
+          <textarea
+            placeholder="Telas/APIs/serviços/componentes/banco envolvidos, repositórios, observações técnicas"
+            rows={6}
+            value={technicalText}
+            onChange={(e) => {
+              setTechnicalTextTouched(true);
+              setTechnicalText(e.target.value);
+            }}
+          />
+        </section>
+      </div>
 
-      <section>
-        <h2>Editar diretamente</h2>
-        <MarkdownEditor value={content} onChange={setDraft} />
-        {hasPermission("SPECIFICATION_WRITE") && (
-          <button type="button" onClick={saveDraft} disabled={draft === null}>
-            Save new version
+      <div style={{ display: step === 1 ? undefined : "none" }}>
+        {demandId && <SystemSelection demandId={demandId} />}
+      </div>
+
+      <div style={{ display: step === 2 ? undefined : "none" }}>
+        {demandId && (
+          <PromptSpecPanel
+            demandId={demandId}
+            business={businessText}
+            technical={technicalText}
+            active={step === 2}
+          />
+        )}
+      </div>
+
+      <div style={{ display: step === 3 ? undefined : "none" }}>
+        {hasPermission("SPECIFICATION_WRITE") && <UploadPanel onUpload={handleUpload} />}
+      </div>
+
+      <div className="wizard-nav">
+        {step > 0 ? (
+          <button type="button" onClick={() => setStep(step - 1)}>
+            ← Voltar
+          </button>
+        ) : (
+          <span />
+        )}
+        {step < WIZARD_STEPS.length - 1 && (
+          <button type="button" onClick={() => setStep(step + 1)}>
+            Avançar →
           </button>
         )}
-      </section>
+      </div>
+    </div>
+  );
+}
 
-      {hasPermission("SPECIFICATION_WRITE") && <UploadPanel onUpload={handleUpload} />}
+function WizardSteps({ current, onJump }: { current: number; onJump: (step: number) => void }) {
+  return (
+    <div className="wizard-steps">
+      {WIZARD_STEPS.map((label, index) => (
+        <button
+          key={label}
+          type="button"
+          className={index === current ? "wizard-step wizard-step-active" : "wizard-step"}
+          onClick={() => onJump(index)}
+        >
+          Parte {index + 1}: {label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
-      <section>
-        <h2>Version history</h2>
-        <ul>
-          {versions.map((v) => (
-            <li key={v.id}>
-              v{v.versionNumber} — {v.reason ?? "no reason recorded"}{" "}
-              <Badge label={v.status} tone={STATUS_TONE[v.status] ?? "neutral"} />{" "}
-              <Badge label={v.source} tone="neutral" />
-              {v.status !== "APPROVED" && hasPermission("SPECIFICATION_APPROVE") && (
-                <button type="button" onClick={() => approveVersion.mutate({ versionNumber: v.versionNumber })}>
-                  Aprovar
-                </button>
-              )}
-              <button type="button" onClick={() => restoreVersion.mutate(v.versionNumber)}>
-                Restore
+/**
+ * follow-up: Version history was an always-visible section on the page —
+ * now a self-contained button + modal (grid, still with icon actions;
+ * "Editar diretamente" was removed, so the ✎ action opens a read-only
+ * viewer instead of an editable draft).
+ */
+function VersionHistoryButton({
+  specificationId,
+  hasPermission,
+}: {
+  specificationId: string;
+  hasPermission: (permission: string) => boolean;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const { data: versions } = useSpecificationVersionsList(specificationId);
+  const approveVersion = useApproveSpecificationVersion(specificationId);
+  const restoreVersion = useRestoreSpecificationVersion(specificationId);
+  const deactivateVersion = useDeactivateSpecificationVersion(specificationId);
+  const [viewingVersion, setViewingVersion] = useState<SpecificationVersion | null>(null);
+  const [diffPair, setDiffPair] = useState<[number, number] | null>(null);
+  const { data: diff } = useSpecificationDiff(
+    specificationId,
+    diffPair?.[0] ?? null,
+    diffPair?.[1] ?? null,
+  );
+
+  return (
+    <>
+      <button type="button" onClick={() => setIsOpen(true)}>
+        Histórico de versões
+      </button>
+      <Modal title="Histórico de versões" isOpen={isOpen} onClose={() => setIsOpen(false)} className="modal-wide">
+        <DataTable
+          columns={versionColumns(
+            versions?.length ?? 0,
+            hasPermission,
+            setViewingVersion,
+            (v) => approveVersion.mutate({ versionNumber: v.versionNumber }),
+            (v) => restoreVersion.mutate(v.versionNumber),
+            (v) => setDiffPair([v.versionNumber - 1, v.versionNumber]),
+            (v) => deactivateVersion.mutate(v.versionNumber),
+          )}
+          data={versions ?? []}
+          emptyMessage="No versions yet."
+        />
+        {diff && (
+          <section>
+            <h3>Diff</h3>
+            <DiffView additions={diff.additions} deletions={diff.deletions} />
+          </section>
+        )}
+      </Modal>
+      {viewingVersion && (
+        <Modal
+          title={`Versão v${viewingVersion.versionNumber}`}
+          isOpen
+          onClose={() => setViewingVersion(null)}
+          className="modal-wide"
+        >
+          <MarkdownEditor value={viewingVersion.content} onChange={() => {}} readOnly />
+        </Modal>
+      )}
+    </>
+  );
+}
+
+/**
+ * follow-up: Version history was a plain text list with text-labeled
+ * buttons ("Aprovar"/"Restore"/"Diff vs previous") — now a grid, actions as
+ * icon buttons (same `.icon-button`/`.icon-actions` convention as the
+ * Systems Artefatos grid).
+ */
+function versionColumns(
+  totalVersions: number,
+  hasPermission: (permission: string) => boolean,
+  onView: (version: SpecificationVersion) => void,
+  onApprove: (version: SpecificationVersion) => void,
+  onRestore: (version: SpecificationVersion) => void,
+  onDiff: (version: SpecificationVersion) => void,
+  onDelete: (version: SpecificationVersion) => void,
+): ColumnDef<SpecificationVersion, unknown>[] {
+  return [
+    { header: "Versão", accessorFn: (v) => `v${v.versionNumber}` },
+    { header: "Motivo", accessorFn: (v) => v.reason ?? "—" },
+    {
+      header: "Status",
+      cell: ({ row }) => <Badge label={row.original.status} tone={STATUS_TONE[row.original.status] ?? "neutral"} />,
+    },
+    { header: "Origem", cell: ({ row }) => <Badge label={row.original.source} tone="neutral" /> },
+    {
+      header: "Ações",
+      cell: ({ row }) => {
+        const v = row.original;
+        return (
+          <span className="icon-actions">
+            <button type="button" className="icon-button" title="Visualizar" aria-label="Visualizar" onClick={() => onView(v)}>
+              👁
+            </button>
+            {v.status !== "APPROVED" && hasPermission("SPECIFICATION_APPROVE") && (
+              <button type="button" className="icon-button" title="Aprovar" aria-label="Aprovar" onClick={() => onApprove(v)}>
+                ✓
               </button>
-              {versions.length > 1 && v.versionNumber > 1 && (
-                <button
-                  type="button"
-                  onClick={() => setDiffPair([v.versionNumber - 1, v.versionNumber])}
-                >
-                  Diff vs previous
-                </button>
-              )}
+            )}
+            <button type="button" className="icon-button" title="Restaurar" aria-label="Restaurar" onClick={() => onRestore(v)}>
+              ↺
+            </button>
+            {totalVersions > 1 && v.versionNumber > 1 && (
+              <button type="button" className="icon-button" title="Diff vs anterior" aria-label="Diff vs anterior" onClick={() => onDiff(v)}>
+                ⇄
+              </button>
+            )}
+            {v.status !== "APPROVED" && hasPermission("SPECIFICATION_WRITE") && (
+              <button
+                type="button"
+                className="icon-button"
+                title="Excluir versão"
+                aria-label="Excluir versão"
+                onClick={() => {
+                  if (window.confirm(`Excluir a versão v${v.versionNumber}? Essa ação não pode ser desfeita.`)) {
+                    onDelete(v);
+                  }
+                }}
+              >
+                🗑
+              </button>
+            )}
+          </span>
+        );
+      },
+    },
+  ];
+}
+
+/**
+ * follow-up: the analyst approves both SPEC and PLAN documents but each
+ * lives on its own `/specifications/:id` page — there was no way to peek at
+ * the OTHER document's approved content without navigating away and losing
+ * the current draft. Button + list modal; picking one closes the list and
+ * opens its content read-only (never both modals stacked at once).
+ */
+function SiblingDocumentsButton({
+  demandId,
+  currentSpecificationId,
+}: {
+  demandId: string;
+  currentSpecificationId: string;
+}) {
+  const { data: specifications } = useQuery({
+    queryKey: ["demand", demandId, "specifications"],
+    queryFn: () => apiGet<Specification[]>(`/demands/${demandId}/specifications`),
+    enabled: !!demandId,
+  });
+  const [isListOpen, setIsListOpen] = useState(false);
+  const [viewingSpecId, setViewingSpecId] = useState<string | null>(null);
+  const siblings = (specifications ?? []).filter(
+    (s) => s.id !== currentSpecificationId && s.currentVersionId,
+  );
+
+  return (
+    <>
+      <button type="button" onClick={() => setIsListOpen(true)}>
+        Outros documentos
+      </button>
+      <Modal title="Outros documentos desta demanda" isOpen={isListOpen} onClose={() => setIsListOpen(false)}>
+        {siblings.length === 0 && <p>Nenhum outro documento aprovado ainda.</p>}
+        <ul>
+          {siblings.map((s) => (
+            <li key={s.id}>
+              {s.documentType}{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsListOpen(false);
+                  setViewingSpecId(s.id);
+                }}
+              >
+                Visualizar
+              </button>
             </li>
           ))}
         </ul>
-      </section>
-
-      {diff && (
-        <section>
-          <h2>Diff</h2>
-          <DiffView additions={diff.additions} deletions={diff.deletions} />
-        </section>
+      </Modal>
+      {viewingSpecId && (
+        <SiblingDocumentModal specificationId={viewingSpecId} onClose={() => setViewingSpecId(null)} />
       )}
-    </div>
+    </>
+  );
+}
+
+function SiblingDocumentModal({
+  specificationId,
+  onClose,
+}: {
+  specificationId: string;
+  onClose: () => void;
+}) {
+  const { data: versions } = useSpecificationVersionsList(specificationId);
+  const latest = versions?.[versions.length - 1];
+  return (
+    <Modal title="Visualizar documento" isOpen onClose={onClose} className="modal-wide">
+      {latest ? (
+        <MarkdownEditor value={latest.content} onChange={() => {}} readOnly />
+      ) : (
+        <p>Carregando…</p>
+      )}
+    </Modal>
   );
 }
 
@@ -392,25 +606,39 @@ function SystemSelection({ demandId }: { demandId: string }) {
  * feature 005 User Story 4 (FR-014-FR-019): substitui o "Enviar para IA" —
  * consolida negócio/técnico/Cliente/Sistemas/Artefatos no template
  * `prompt-spec-kit.md`, exibe o resultado e permite copiar. Nenhuma chamada
- * de LLM ocorre aqui (FR-018).
+ * de LLM ocorre aqui (FR-018). follow-up: `active` (true quando esta é a
+ * etapa 3 do wizard atual) dispara geração automática ao entrar na etapa —
+ * "já vem gerado conforme etapas anteriores" — mantendo o botão pra
+ * regenerar manualmente caso o analista volte e mude algo.
  */
 function PromptSpecPanel({
   demandId,
   business,
   technical,
+  active,
 }: {
   demandId: string;
   business: string;
   technical: string;
+  active: boolean;
 }) {
   const { hasPermission } = useAuth();
   const generatePrompt = useGeneratePromptSpec(demandId);
   const [copied, setCopied] = useState(false);
+  const generatedForStep = useRef(false);
 
   async function generate() {
     setCopied(false);
     await generatePrompt.mutateAsync({ business, technical });
   }
+
+  useEffect(() => {
+    if (active && !generatedForStep.current && hasPermission("SPEC_PROMPT_GENERATE")) {
+      generatedForStep.current = true;
+      void generate();
+    }
+    if (!active) generatedForStep.current = false;
+  }, [active]);
 
   async function copyPrompt() {
     if (!generatePrompt.data) return;
@@ -423,7 +651,7 @@ function PromptSpecPanel({
       <h2>Prompt SPEC</h2>
       {hasPermission("SPEC_PROMPT_GENERATE") && (
         <button type="button" onClick={generate} disabled={generatePrompt.isPending}>
-          Gerar Prompt SPEC
+          {generatePrompt.data ? "Regenerar Prompt SPEC" : "Gerar Prompt SPEC"}
         </button>
       )}
       {generatePrompt.data && (
@@ -439,6 +667,64 @@ function PromptSpecPanel({
   );
 }
 
+/** follow-up: reads a dropped/selected .md file's text content into the field — kept alongside the paste-text textarea, not instead of it. */
+function FileDropField({
+  label,
+  placeholder,
+  value,
+  onChange,
+}: {
+  label: string;
+  placeholder: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [isDragging, setIsDragging] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function readFile(file: File | undefined) {
+    if (!file) return;
+    onChange(await file.text());
+  }
+
+  return (
+    <div className="form-field">
+      <label>{label}</label>
+      <div
+        className={isDragging ? "file-drop-zone file-drop-zone-active" : "file-drop-zone"}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDragging(true);
+        }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setIsDragging(false);
+          void readFile(e.dataTransfer.files[0]);
+        }}
+        onClick={() => inputRef.current?.click()}
+        role="button"
+        tabIndex={0}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".md,.markdown,text/markdown,text/plain"
+          hidden
+          onChange={(e) => void readFile(e.target.files?.[0])}
+        />
+        <p>Arraste o arquivo .md aqui ou clique para selecionar</p>
+      </div>
+      <textarea
+        placeholder={placeholder}
+        rows={6}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </div>
+  );
+}
+
 function UploadPanel({
   onUpload,
 }: {
@@ -449,17 +735,17 @@ function UploadPanel({
   return (
     <section>
       <h2>Anexar arquivos prontos</h2>
-      <textarea
-        placeholder="Conteúdo de specify.md"
-        rows={6}
+      <FileDropField
+        label="specify.md"
+        placeholder="Ou cole o conteúdo de specify.md aqui"
         value={specifyMarkdown}
-        onChange={(e) => setSpecifyMarkdown(e.target.value)}
+        onChange={setSpecifyMarkdown}
       />
-      <textarea
-        placeholder="Conteúdo de plan.md"
-        rows={6}
+      <FileDropField
+        label="plan.md"
+        placeholder="Ou cole o conteúdo de plan.md aqui"
         value={planMarkdown}
-        onChange={(e) => setPlanMarkdown(e.target.value)}
+        onChange={setPlanMarkdown}
       />
       <button
         type="button"

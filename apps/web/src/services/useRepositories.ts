@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiGet, apiPatch } from "./api";
+import { apiGet, apiPatch, apiPost } from "./api";
 import type { Artifact, PaginatedResult } from "./types";
 
 export interface Repository {
@@ -18,6 +18,21 @@ export function useRepositoriesList(page: number) {
   });
 }
 
+/** follow-up: registers the git address (`owner/repo`) a Project's Developer Agent clones/branches/commits/opens PRs against — previously only insertable directly in the database. */
+export function useCreateRepository() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      projectId: string;
+      externalReference: string;
+      productionBranch?: string;
+      homologationBranch?: string;
+    }) => apiPost<Repository>("/repositories", input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["repositories"] }),
+  });
+}
+
+/** follow-up: `externalReference` is now editable too — Repository is the single place to manage a repo's address and both branches together. */
 export function useUpdateRepository() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -26,6 +41,8 @@ export function useUpdateRepository() {
       ...input
     }: {
       id: string;
+      projectId?: string;
+      externalReference?: string;
       productionBranch?: string;
       homologationBranch?: string;
     }) => apiPatch<Repository>(`/repositories/${id}`, input),

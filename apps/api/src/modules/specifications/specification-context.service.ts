@@ -18,17 +18,16 @@ export class SpecificationContextService {
 
   /**
    * feature 004 (spec FR-003, research.md §11): resolves "branch de origem"
-   * from the repository backing the demand's known artifacts when one
-   * exists, falling back to the project's own branch fields otherwise
-   * (edge case: multiple repositories may have diverging branches — the
-   * first artifact-linked repository wins, a reasonable default absent a
-   * more specific "primary repository" concept).
+   * from the repository backing the demand's known artifacts (edge case:
+   * multiple repositories may have diverging branches — the first
+   * artifact-linked repository wins, a reasonable default absent a more
+   * specific "primary repository" concept). follow-up: Project no longer
+   * has its own branch fields (moved to Repository, the single source of
+   * truth) — with no repository resolvable yet, this returns nulls and the
+   * frontend prompts the analyst to fill it in manually.
    */
   async resolveOriginBranch(demandId: string) {
-    const demand = await this.prisma.db.demand.findUnique({
-      where: { id: demandId },
-      include: { project: true },
-    });
+    const demand = await this.prisma.db.demand.findUnique({ where: { id: demandId } });
     if (!demand) throw new NotFoundException(`Demand ${demandId} not found`);
 
     const artifactLink = await this.prisma.db.artifactRepository.findFirst({
@@ -39,10 +38,9 @@ export class SpecificationContextService {
       : null;
 
     return {
-      productionBranch: repository?.productionBranch ?? demand.project.productionBranch ?? null,
-      homologationBranch:
-        repository?.homologationBranch ?? demand.project.homologationBranch ?? null,
-      source: repository ? "repository" : demand.project.productionBranch ? "project" : null,
+      productionBranch: repository?.productionBranch ?? null,
+      homologationBranch: repository?.homologationBranch ?? null,
+      source: repository ? "repository" : null,
     };
   }
 

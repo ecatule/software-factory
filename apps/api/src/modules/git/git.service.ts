@@ -5,6 +5,7 @@ import {
 } from "@software-factory/domain";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { DeveloperAgentService } from "../executions/developer-agent.service";
+import { composeOwnerRepo } from "../executions/repository-reference";
 
 @Injectable()
 export class GitService {
@@ -68,23 +69,28 @@ export class GitService {
 
     const branch = await this.prisma.db.branch.findUniqueOrThrow({
       where: {
-        repositoryId_demandId: { repositoryId: firstRepoLink.repositoryId, demandId },
+        artifactId_demandId: { artifactId, demandId },
       },
     });
     const repository = await this.prisma.db.repository.findUniqueOrThrow({
       where: { id: branch.repositoryId },
     });
+    const externalReference = composeOwnerRepo(repository.externalReference, artifact.name);
     const latestTest = await this.prisma.db.testExecution.findFirstOrThrow({
       where: { demandId },
       orderBy: { startedAt: "desc" },
     });
 
+    const workspacePath = await this.developerAgent.resolveWorkspacePath(demandId);
+    const targetPath = this.developerAgent.resolveClonePath(workspacePath, externalReference);
+
     const commitRef = await this.codeRepositoryProvider.commit(
-      repository.externalReference,
+      externalReference,
+      targetPath,
       branch.name,
       message,
     );
-    await this.codeRepositoryProvider.push(repository.externalReference, branch.name);
+    await this.codeRepositoryProvider.push(externalReference, targetPath, branch.name);
 
     return this.prisma.db.commit.create({
       data: {
@@ -116,19 +122,20 @@ export class GitService {
 
     const [firstArtifact] = artifacts;
     const [firstRepoLink] = firstArtifact?.repositories ?? [];
-    if (!firstRepoLink) {
+    if (!firstArtifact || !firstRepoLink) {
       throw new HttpException("No repository linked to this demand's artifacts", HttpStatus.UNPROCESSABLE_ENTITY);
     }
     const branch = await this.prisma.db.branch.findUniqueOrThrow({
-      where: { repositoryId_demandId: { repositoryId: firstRepoLink.repositoryId, demandId } },
+      where: { artifactId_demandId: { artifactId: firstArtifact.id, demandId } },
     });
     const repository = await this.prisma.db.repository.findUniqueOrThrow({
       where: { id: branch.repositoryId },
     });
+    const externalReference = composeOwnerRepo(repository.externalReference, firstArtifact.name);
 
     const description = this.buildPullRequestDescription(demand, artifacts, tests);
     const pr = await this.codeRepositoryProvider.createPullRequest(
-      repository.externalReference,
+      externalReference,
       branch.name,
       `[${demand.externalId}] ${demand.title}`,
       description,

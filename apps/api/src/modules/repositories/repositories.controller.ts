@@ -1,8 +1,8 @@
-import { Body, Controller, Get, Param, Patch, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../identity/auth/jwt-auth.guard";
 import { RepositoriesService } from "./repositories.service";
-import { UpdateRepositoryDto } from "./dto/repository.dto";
+import { CreateRepositoryDto, UpdateRepositoryDto } from "./dto/repository.dto";
 
 @ApiTags("repositories")
 @ApiBearerAuth()
@@ -10,6 +10,11 @@ import { UpdateRepositoryDto } from "./dto/repository.dto";
 @Controller("repositories")
 export class RepositoriesController {
   constructor(private readonly repositoriesService: RepositoriesService) {}
+
+  @Post()
+  create(@Body() dto: CreateRepositoryDto) {
+    return this.repositoriesService.create(dto);
+  }
 
   @Get()
   list(

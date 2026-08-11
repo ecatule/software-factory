@@ -126,9 +126,6 @@ export interface Project {
   branchNamingPolicy: string;
   requiredTestSuites: string[];
   version: number;
-  /** feature 004 FR-001. */
-  productionBranch: string | null;
-  homologationBranch: string | null;
-  homologationEnvironment: string | null;
-  productionEnvironment: string | null;
+  /** follow-up: `.specify/memory/constitution.md` content applied to every demand's workspace before any SDD stage runs. */
+  constitution: string | null;
 }

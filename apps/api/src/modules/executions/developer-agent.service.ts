@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
 import { access } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -6,6 +7,17 @@ import {
   type CodeRepositoryProvider,
 } from "@software-factory/domain";
 import { PrismaService } from "../../common/prisma/prisma.service";
+import { WORKSPACE_ROOT } from "../workspaces/workspaces.service";
+import { loadProjectSanitizationRules } from "./project-environment-config";
+import { assertRepositoriesAreProductionSafe, sanitizeRepositories } from "./production-reference.guard";
+import { composeOwnerRepo } from "./repository-reference";
+
+interface ArtifactRepositoryLink {
+  artifactId: string;
+  repositoryId: string;
+  /** Composed "owner/repo" — see repository-reference.ts. */
+  externalReference: string;
+}
 
 /**
  * spec User Story 6: the Developer Agent's supporting logic — branch
@@ -23,42 +35,59 @@ export class DeveloperAgentService {
   ) {}
 
   /**
-   * spec Edge Cases: when multiple artifacts share a repository, only ONE
-   * branch is created for that repository for this demand — enforced via
-   * `Branch`'s `(repositoryId, demandId)` unique constraint plus this
-   * find-or-create logic, never a blind create.
+   * follow-up: shared with `ExecutionsProcessor` (every execution needs
+   * this, not just "developer" ones) and `GitService.commit()` (needs the
+   * same clone location the Developer Agent used) — previously duplicated,
+   * now the one place `DemandWorkspace` gets resolved.
+   *
+   * follow-up (live-validation finding): the fallback for demands that
+   * never had `POST /demands/:id/workspace` called used to be the bare
+   * relative path `"workspace/<demandId>"`, resolved against whatever
+   * directory the API process happened to be launched from (e.g.
+   * `apps/api/workspace/...` instead of the repo-root `workspace/...` every
+   * other workspace lives in) — the exact "process cwd varies" trap
+   * `WORKSPACE_ROOT` in workspaces.service.ts already exists to avoid.
+   * Reusing that same constant keeps the fallback consistent with
+   * `WorkspacesService.createForDemand()`.
+   */
+  async resolveWorkspacePath(demandId: string): Promise<string> {
+    const workspace = await this.prisma.db.demandWorkspace.findUnique({ where: { demandId } });
+    return workspace?.path ?? path.join(WORKSPACE_ROOT, demandId);
+  }
+
+  /**
+   * follow-up: was "multiple artifacts share a repository → share ONE
+   * branch", enforced via `Branch`'s `(repositoryId, demandId)` uniqueness.
+   * Now that `Repository.externalReference` is just the shared org/host
+   * base (composeOwnerRepo in repository-reference.ts), a single Repository
+   * row can back several DIFFERENT real repos — one per Artifact — so
+   * branch identity keys off `(artifactId, demandId)` instead. Still a
+   * find-or-create, never a blind create.
    */
   async ensureBranchesForDemand(demandId: string) {
     const demand = await this.prisma.db.demand.findUniqueOrThrow({ where: { id: demandId } });
-    const artifacts = await this.prisma.db.artifact.findMany({
-      where: { demandId },
-      include: { repositories: true },
-    });
-    const repositoryIds = [
-      ...new Set(artifacts.flatMap((a) => a.repositories.map((r) => r.repositoryId))),
-    ];
+    const links = await this.resolveArtifactRepositoryLinks(demandId);
 
     const project = await this.prisma.db.project.findUniqueOrThrow({
       where: { id: demand.projectId },
     });
 
     const branches = [];
-    for (const repositoryId of repositoryIds) {
+    for (const link of links) {
       const existing = await this.prisma.db.branch.findUnique({
-        where: { repositoryId_demandId: { repositoryId, demandId } },
+        where: { artifactId_demandId: { artifactId: link.artifactId, demandId } },
       });
       if (existing) {
         branches.push(existing);
         continue;
       }
 
-      const repository = await this.prisma.db.repository.findUniqueOrThrow({
-        where: { id: repositoryId },
-      });
       const branchName = this.buildBranchName(project.branchNamingPolicy, demand);
-      await this.codeRepositoryProvider.createBranch(repository.externalReference, branchName);
+      await this.codeRepositoryProvider.createBranch(link.externalReference, branchName);
       branches.push(
-        await this.prisma.db.branch.create({ data: { repositoryId, demandId, name: branchName } }),
+        await this.prisma.db.branch.create({
+          data: { repositoryId: link.repositoryId, artifactId: link.artifactId, demandId, name: branchName },
+        }),
       );
     }
     return branches;
@@ -72,6 +101,98 @@ export class DeveloperAgentService {
    * repositories already cloned into `artefatos/<repo>/`.
    */
   async ensureRepositoriesCloned(demandId: string, workspacePath: string): Promise<void> {
+    const links = await this.resolveArtifactRepositoryLinks(demandId);
+    if (links.length === 0) return;
+
+    const branches = await this.prisma.db.branch.findMany({
+      where: { demandId, artifactId: { in: links.map((l) => l.artifactId) } },
+    });
+    const branchNameByArtifact = new Map(branches.map((b) => [b.artifactId, b.name]));
+
+    for (const link of links) {
+      const targetPath = this.resolveClonePath(workspacePath, link.externalReference);
+
+      if (!(await this.pathExists(path.join(targetPath, ".git")))) {
+        await this.codeRepositoryProvider.cloneRepository(link.externalReference, targetPath);
+      }
+
+      const branchName = branchNameByArtifact.get(link.artifactId);
+      if (branchName) {
+        await this.codeRepositoryProvider.checkoutBranch(targetPath, branchName);
+      }
+    }
+  }
+
+  /**
+   * follow-up (security): runs right after `ensureRepositoriesCloned` and
+   * before the SDD provider's `implement` stage is ever invoked — the one
+   * moment the cloned Artefato repositories exist on disk but the
+   * Developer Agent hasn't touched them yet.
+   *
+   * Two layers: (1) rewrites KNOWN production patterns to a fixed
+   * homologation value per the Project's rules (project-environment-config.ts
+   * — a file on the API server's own filesystem, never Postgres, never a
+   * literal production URL); (2) blocks the run if anything STILL looks
+   * like production or a real secret afterward. Records an AuditLog entry
+   * either way — for a sanitization, only the rule/file/variable touched,
+   * deliberately never the value; for a block, the reason. Same pattern
+   * `WorkflowsService.recordStageTransition` uses for writes that happen
+   * inside this BullMQ worker instead of an HTTP request (the global
+   * AuditInterceptor only wraps HTTP request/response cycles).
+   */
+  async enforceProductionSafety(demandId: string, workspacePath: string): Promise<void> {
+    const demand = await this.prisma.db.demand.findUniqueOrThrow({ where: { id: demandId } });
+    const links = await this.resolveArtifactRepositoryLinks(demandId);
+    if (links.length === 0) return;
+
+    const repoPaths = links.map((link) => this.resolveClonePath(workspacePath, link.externalReference));
+    const rules = await loadProjectSanitizationRules(demand.projectId);
+
+    const changes = await sanitizeRepositories(repoPaths, rules);
+    if (changes.length > 0) {
+      await this.prisma.db.auditLog.create({
+        data: {
+          action: "PRE_IMPLEMENT_AUTO_SANITIZED",
+          entityType: "demands",
+          entityId: demandId,
+          after: { changes },
+          correlationId: randomUUID(),
+        },
+      });
+    }
+
+    try {
+      await assertRepositoriesAreProductionSafe(repoPaths);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await this.prisma.db.auditLog.create({
+        data: {
+          action: "PRE_IMPLEMENT_SAFETY_BLOCK",
+          entityType: "demands",
+          entityId: demandId,
+          after: { message },
+          correlationId: randomUUID(),
+        },
+      });
+      throw error;
+    }
+  }
+
+  /** follow-up: also used by `GitService.commit()` to locate the same clone. */
+  resolveClonePath(workspacePath: string, externalReference: string): string {
+    const repoDirName = externalReference.split("/").pop() ?? externalReference;
+    return path.join(workspacePath, "artefatos", repoDirName);
+  }
+
+  /**
+   * One entry per (Artifact, Repository) link — NOT deduplicated by
+   * repositoryId, since several Artifacts (different real repos) can now
+   * share the same Repository row (the shared org/host base). `Repository`
+   * has no `@relation` back to `ArtifactRepository` (matches this schema's
+   * existing convention of plain scalar FKs for simple lookups), so
+   * repositories are fetched separately and joined in memory.
+   */
+  private async resolveArtifactRepositoryLinks(demandId: string): Promise<ArtifactRepositoryLink[]> {
     const artifacts = await this.prisma.db.artifact.findMany({
       where: { demandId },
       include: { repositories: true },
@@ -79,29 +200,26 @@ export class DeveloperAgentService {
     const repositoryIds = [
       ...new Set(artifacts.flatMap((a) => a.repositories.map((r) => r.repositoryId))),
     ];
-    if (repositoryIds.length === 0) return;
+    if (repositoryIds.length === 0) return [];
 
-    const branches = await this.prisma.db.branch.findMany({
-      where: { demandId, repositoryId: { in: repositoryIds } },
+    const repositories = await this.prisma.db.repository.findMany({
+      where: { id: { in: repositoryIds } },
     });
-    const branchNameByRepo = new Map(branches.map((b) => [b.repositoryId, b.name]));
+    const repositoryById = new Map(repositories.map((r) => [r.id, r]));
 
-    for (const repositoryId of repositoryIds) {
-      const repository = await this.prisma.db.repository.findUniqueOrThrow({
-        where: { id: repositoryId },
-      });
-      const repoDirName = repository.externalReference.split("/").pop() ?? repository.externalReference;
-      const targetPath = path.join(workspacePath, "artefatos", repoDirName);
-
-      if (!(await this.pathExists(path.join(targetPath, ".git")))) {
-        await this.codeRepositoryProvider.cloneRepository(repository.externalReference, targetPath);
-      }
-
-      const branchName = branchNameByRepo.get(repositoryId);
-      if (branchName) {
-        await this.codeRepositoryProvider.checkoutBranch(targetPath, branchName);
+    const links: ArtifactRepositoryLink[] = [];
+    for (const artifact of artifacts) {
+      for (const link of artifact.repositories) {
+        const repository = repositoryById.get(link.repositoryId);
+        if (!repository) continue;
+        links.push({
+          artifactId: artifact.id,
+          repositoryId: link.repositoryId,
+          externalReference: composeOwnerRepo(repository.externalReference, artifact.name),
+        });
       }
     }
+    return links;
   }
 
   private async pathExists(candidate: string): Promise<boolean> {

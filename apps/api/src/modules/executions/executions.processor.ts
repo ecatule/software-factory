@@ -1,7 +1,6 @@
 import { Inject, Logger } from "@nestjs/common";
 import { Processor, WorkerHost } from "@nestjs/bullmq";
 import type { Job } from "bullmq";
-import path from "node:path";
 import {
   LLM_PROVIDER,
   SDD_PROVIDER,
@@ -60,11 +59,17 @@ export class ExecutionsProcessor extends WorkerHost {
     });
 
     try {
-      const workspacePath = await this.resolveWorkspacePath(execution.demandId);
+      const workspacePath = await this.developerAgent.resolveWorkspacePath(execution.demandId);
       const stage = execution.pipelineStage ?? "specify";
       const demand = await this.prisma.db.demand.findUniqueOrThrow({
         where: { id: execution.demandId },
+        include: { project: true },
       });
+      // follow-up: written into `.specify/memory/constitution.md` before
+      // every SDD stage runs (SpecKitProvider.ensureInitialized), so
+      // `/speckit-specify`/`/speckit-plan`/etc. read this Project's real
+      // governance rules instead of the blank Spec Kit template.
+      const constitution = demand.project.constitution ?? undefined;
 
       if (execution.agent.type === "developer") {
         // spec User Story 6: reuse ONE branch per repository for this demand
@@ -73,6 +78,9 @@ export class ExecutionsProcessor extends WorkerHost {
         // file changes (DISCOVERED files get a justification — spec FR-017).
         await this.developerAgent.ensureBranchesForDemand(execution.demandId);
         await this.developerAgent.ensureRepositoriesCloned(execution.demandId, workspacePath);
+        // security: cloned but not yet touched by the AI — the one moment
+        // to refuse before the Developer Agent can read/act on production data.
+        await this.developerAgent.enforceProductionSafety(execution.demandId, workspacePath);
         const context = await this.providerConfiguration.resolveSddContext(
           demand.projectId,
           "implement",
@@ -80,7 +88,7 @@ export class ExecutionsProcessor extends WorkerHost {
         const result = await this.sddProvider.implement({
           demandId: execution.demandId,
           workspacePath,
-          context: { ...context },
+          context: { ...context, constitution },
         });
 
         const [firstArtifact] = await this.prisma.db.artifact.findMany({
@@ -151,7 +159,7 @@ export class ExecutionsProcessor extends WorkerHost {
       const result = await stageMethod.call(this.sddProvider, {
         demandId: execution.demandId,
         workspacePath,
-        context: { ...context, description },
+        context: { ...context, description, constitution },
       });
 
       await this.writeSpecificationVersion(execution, stage, result.content);
@@ -244,12 +252,6 @@ export class ExecutionsProcessor extends WorkerHost {
     }
   }
 
-  private async resolveWorkspacePath(demandId: string): Promise<string> {
-    const workspace = await this.prisma.db.demandWorkspace.findUnique({
-      where: { demandId },
-    });
-    return workspace?.path ?? path.join("workspace", demandId);
-  }
 
   private async writeSpecificationVersion(
     execution: { id: string; demandId: string; agentId: string; providerConfigurationId: string | null },

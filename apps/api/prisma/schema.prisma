@@ -295,12 +295,20 @@ model Project {
   branchNamingPolicy String   @default("<type>/<client>/<ticket>-<slug>") @map("branch_naming_policy")
   requiredTestSuites String[] @map("required_test_suites")
 
-  // feature 004 (spec FR-001): resolves the "Branch de Origem" gap in the
-  // AI-assisted Specification workflow (feature 003).
-  productionBranch        String? @map("production_branch")
-  homologationBranch      String? @map("homologation_branch")
-  homologationEnvironment String? @map("homologation_environment")
-  productionEnvironment   String? @map("production_environment")
+  // feature 004 (spec FR-001) had productionBranch/homologationBranch here;
+  // moved to Repository (branches are a per-repo git concept). follow-up:
+  // production/homologation environment URLs also removed from here — for
+  // security, that data now lives only in a file on the API server's
+  // filesystem (see project-environment-config.ts), never in Postgres,
+  // never reachable through any HTTP endpoint.
+
+  // follow-up: per-project `.specify/memory/constitution.md` content —
+  // written into every demand's workspace right before any SDD stage runs
+  // (SpecKitProvider.ensureInitialized), so `/speckit-specify`,
+  // `/speckit-plan`, etc. all read this project's real governance rules
+  // instead of the blank Spec Kit template. Editable via the Project screen
+  // — unlike project-environments, constitution content isn't sensitive.
+  constitution String?
 
   demands             Demand[]
   projectTechnologies ProjectTechnology[]
@@ -624,6 +632,7 @@ model Artifact {
 
   files        ArtifactFile[]
   repositories ArtifactRepository[]
+  branches     Branch[]
 
   @@map("artifacts")
 }
@@ -679,8 +688,8 @@ model Repository {
   providerConfigurationId String? @map("provider_configuration_id") @db.Uuid
   externalReference       String  @map("external_reference")
 
-  // feature 004 (spec FR-002): overrides the project-level branch fields for
-  // this specific repository when a project has more than one.
+  // feature 004 (spec FR-002). follow-up: the single source of truth for
+  // production/homologation branch — previously duplicated on Project too.
   productionBranch   String? @map("production_branch")
   homologationBranch String? @map("homologation_branch")
 
@@ -701,12 +710,20 @@ model Branch {
 
   repositoryId String     @map("repository_id") @db.Uuid
   repository   Repository @relation(fields: [repositoryId], references: [id])
+  artifactId   String     @map("artifact_id") @db.Uuid
+  artifact     Artifact   @relation(fields: [artifactId], references: [id])
   demandId     String     @map("demand_id") @db.Uuid
   name         String
 
-  // spec Edge Cases: multiple artifacts sharing one repository share ONE
-  // branch — enforced here, not assumed by callers.
-  @@unique([repositoryId, demandId])
+  // follow-up: was `@@unique([repositoryId, demandId])` — "one branch per
+  // repository per demand". Repository.externalReference is now just the
+  // git host/org base (e.g. "https://github.com/ecatule"), shared by every
+  // Artifact in that org, so a single Repository row can back several
+  // DIFFERENT real repos (composeOwnerRepo(repository.externalReference,
+  // artifact.name)) — the branch identity has to key off the Artifact, not
+  // the shared base row, or two different real repos sharing a base would
+  // wrongly collapse into one Branch.
+  @@unique([artifactId, demandId])
   @@map("branches")
 }
 

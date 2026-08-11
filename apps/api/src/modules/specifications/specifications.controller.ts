@@ -75,6 +75,13 @@ export class SpecificationsController {
   restore(@Param("id") id: string, @Param("versionId", ParseIntPipe) versionNumber: number) {
     return this.specificationsService.restore(id, versionNumber);
   }
+
+  /** follow-up: discard a version the analyst decided not to approve — soft-delete only, blocked once APPROVED. */
+  @Post(":id/versions/:versionId/deactivate")
+  @RequirePermission("SPECIFICATION_WRITE")
+  deactivate(@Param("id") id: string, @Param("versionId", ParseIntPipe) versionNumber: number) {
+    return this.specificationsService.deactivateVersion(id, versionNumber);
+  }
 }
 
 function currentUserId(req: Request): string | undefined {

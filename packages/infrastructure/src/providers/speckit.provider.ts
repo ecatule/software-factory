@@ -1,6 +1,6 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import { access, readFile, readdir } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type {
   ArtifactResult,
@@ -98,7 +98,7 @@ export class SpecKitProvider implements SDDProvider {
   }
 
   async implement(input: SDDInput): Promise<ImplementationResult> {
-    await this.ensureInitialized(input.workspacePath);
+    await this.ensureInitialized(input.workspacePath, input.context?.constitution as string | undefined);
     const summary = await this.runClaude("implement", "/speckit-implement", input);
     const filesChanged = await this.collectChangedFiles(input.workspacePath);
     return { filesChanged, summary };
@@ -108,7 +108,7 @@ export class SpecKitProvider implements SDDProvider {
     stage: keyof typeof STAGE_TO_OUTPUT_FILE,
     input: SDDInput,
   ): Promise<ArtifactResult> {
-    await this.ensureInitialized(input.workspacePath);
+    await this.ensureInitialized(input.workspacePath, input.context?.constitution as string | undefined);
 
     const description = input.context?.description as string | undefined;
     if (stage === "specify" && !description?.trim()) {
@@ -153,19 +153,48 @@ export class SpecKitProvider implements SDDProvider {
    * re-runs after that. `--force`/`--ignore-agent-tools` keep this
    * non-interactive: no confirmation prompt, no coding-agent-detection
    * check that could hang a headless worker.
+   *
+   * follow-up (live-validation finding): `workspacePath` isn't always
+   * created ahead of time — `DeveloperAgentService.resolveWorkspacePath`
+   * falls back to `workspace/<demandId>` when no `DemandWorkspace` row
+   * exists yet (nothing calls `POST /demands/:id/workspace` automatically),
+   * and that fallback directory was never `mkdir`'d anywhere. Spawning a
+   * child process with a `cwd` that doesn't exist fails at the OS level —
+   * on Windows this surfaces as the misleading `spawn cmd.exe ENOENT`
+   * rather than any mention of the missing directory. `mkdir` here is a
+   * no-op once the real directory already exists (recursive), so this is
+   * safe for both the fallback and the "real" workspace.
    */
-  private async ensureInitialized(workspacePath: string): Promise<void> {
+  private async ensureInitialized(workspacePath: string, constitution?: string): Promise<void> {
+    await mkdir(workspacePath, { recursive: true });
     const marker = path.join(workspacePath, ".specify");
-    try {
-      await access(marker);
-      return;
-    } catch {
-      // not initialized yet — fall through
+    const alreadyInitialized = await this.pathExists(marker);
+    if (!alreadyInitialized) {
+      await execAsync(
+        `${this.specifyCommand} init . --integration claude --force --ignore-agent-tools`,
+        { cwd: workspacePath, timeout: this.timeoutMs },
+      );
     }
-    await execAsync(
-      `${this.specifyCommand} init . --integration claude --force --ignore-agent-tools`,
-      { cwd: workspacePath, timeout: this.timeoutMs },
-    );
+
+    // follow-up: written on EVERY call (not just first init) so the latest
+    // saved Project constitution is always what `/speckit-specify`,
+    // `/speckit-plan`, etc. read — not just a one-time snapshot from
+    // whenever this workspace happened to be first scaffolded. Overwrites
+    // the blank template `specify init` creates.
+    if (constitution?.trim()) {
+      const constitutionPath = path.join(workspacePath, ".specify", "memory", "constitution.md");
+      await mkdir(path.dirname(constitutionPath), { recursive: true });
+      await writeFile(constitutionPath, constitution, "utf-8");
+    }
+  }
+
+  private async pathExists(candidate: string): Promise<boolean> {
+    try {
+      await access(candidate);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private async runClaude(

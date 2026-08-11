@@ -39,8 +39,9 @@ export interface CodeRepositoryProvider {
   checkoutBranch(targetPath: string, branchName: string): Promise<void>;
   getFile(externalReference: string, branch: string, path: string): Promise<FileRef>;
   searchCode(externalReference: string, query: string): Promise<FileRef[]>;
-  commit(externalReference: string, branch: string, message: string): Promise<CommitRef>;
-  push(externalReference: string, branch: string): Promise<void>;
+  /** `targetPath` is the local clone's absolute path (same convention as `checkoutBranch`). */
+  commit(externalReference: string, targetPath: string, branch: string, message: string): Promise<CommitRef>;
+  push(externalReference: string, targetPath: string, branch: string): Promise<void>;
   createPullRequest(
     externalReference: string,
     branch: string,

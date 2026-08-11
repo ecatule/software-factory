@@ -12,7 +12,7 @@ import { paginate } from "../../common/pagination/paginate";
  * with `WORKSPACE_ROOT` in `.env` for deployments where this file's
  * location relative to the repo root differs (e.g. containerized builds).
  */
-const WORKSPACE_ROOT =
+export const WORKSPACE_ROOT =
   process.env.WORKSPACE_ROOT ?? path.resolve(__dirname, "../../../../../workspace");
 
 const DIACRITICS_PATTERN = new RegExp("[\\u0300-\\u036f]", "g");

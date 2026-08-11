@@ -33,3 +33,9 @@ Thumbs.db
 # Demand workspaces (runtime data, not source)
 workspace/*
 !workspace/.gitkeep
+
+# Per-project production/homologation URLs used by the pre-implement safety
+# gate (production-reference.guard.ts) — deliberately never committed and
+# never stored in Postgres; populated manually on each server.
+project-environments/*
+!project-environments/.gitkeep

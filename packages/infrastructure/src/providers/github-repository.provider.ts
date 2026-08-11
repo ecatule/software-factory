@@ -36,9 +36,26 @@ export class GitHubRepositoryProvider implements CodeRepositoryProvider {
     await execAsync(`git clone ${url} "${targetPath}"`);
   }
 
+  /**
+   * `ensureBranchesForDemand` calls this BEFORE any clone exists
+   * (`ensureRepositoriesCloned` runs after) — there is no local working
+   * copy to `git checkout -b` against yet, so the branch is created
+   * directly via the GitHub REST API, off the repository's default branch.
+   * `checkoutBranch` (called later, once a real clone exists) checks it out
+   * locally. Idempotent: a 422 means the ref already exists (e.g. a retry
+   * after a partial earlier failure), treated as success.
+   */
   async createBranch(externalReference: string, branchName: string): Promise<BranchRef> {
-    // Assumes `cloneRepository` already ran against the workspace at cwd.
-    await execAsync(`git checkout -b ${branchName}`, { cwd: this.repoDir(externalReference) });
+    const repo = await this.api(`/repos/${externalReference}`);
+    const baseRef = await this.api(`/repos/${externalReference}/git/ref/heads/${repo.default_branch}`);
+    try {
+      await this.api(`/repos/${externalReference}/git/refs`, {
+        method: "POST",
+        body: JSON.stringify({ ref: `refs/heads/${branchName}`, sha: baseRef.object.sha }),
+      });
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes("422")) throw error;
+    }
     return { name: branchName };
   }
 
@@ -71,17 +88,21 @@ export class GitHubRepositoryProvider implements CodeRepositoryProvider {
     return (data.items ?? []).map((item: { path: string }) => ({ path: item.path, content: "" }));
   }
 
-  async commit(externalReference: string, branch: string, message: string): Promise<CommitRef> {
-    const cwd = this.repoDir(externalReference);
-    await execAsync(`git checkout ${branch}`, { cwd });
-    await execAsync(`git add -A`, { cwd });
-    await execAsync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { cwd });
-    const { stdout } = await execAsync(`git rev-parse HEAD`, { cwd });
+  async commit(
+    externalReference: string,
+    targetPath: string,
+    branch: string,
+    message: string,
+  ): Promise<CommitRef> {
+    await execAsync(`git checkout ${branch}`, { cwd: targetPath });
+    await execAsync(`git add -A`, { cwd: targetPath });
+    await execAsync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { cwd: targetPath });
+    const { stdout } = await execAsync(`git rev-parse HEAD`, { cwd: targetPath });
     return { sha: stdout.trim() };
   }
 
-  async push(externalReference: string, branch: string): Promise<void> {
-    await execAsync(`git push origin ${branch}`, { cwd: this.repoDir(externalReference) });
+  async push(externalReference: string, targetPath: string, branch: string): Promise<void> {
+    await execAsync(`git push origin ${branch}`, { cwd: targetPath });
   }
 
   async createPullRequest(
@@ -109,10 +130,6 @@ export class GitHubRepositoryProvider implements CodeRepositoryProvider {
       name: run.name,
       status: run.conclusion ?? "pending",
     }));
-  }
-
-  private repoDir(externalReference: string): string {
-    return externalReference.split("/").pop() ?? externalReference;
   }
 
   private async api(path: string, init: RequestInit = {}) {

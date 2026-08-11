@@ -74,13 +74,16 @@ export function useApproveSpecificationVersion(specificationId: string) {
   });
 }
 
+/** follow-up: uploading may create a version on the SIBLING (SPEC/PLAN) document too — invalidate broadly so "Outros documentos" picks up its new currentVersionId. */
 export function useUploadSpecificationVersion(specificationId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: { specifyMarkdown?: string; planMarkdown?: string; reason?: string }) =>
-      apiPost<SpecificationVersion>(`/specifications/${specificationId}/versions/upload`, input),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["specification", specificationId, "versions"] }),
+      apiPost<SpecificationVersion[]>(`/specifications/${specificationId}/versions/upload`, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["specification", specificationId, "versions"] });
+      queryClient.invalidateQueries({ queryKey: ["demand"] });
+    },
   });
 }
 
@@ -90,6 +93,19 @@ export function useRestoreSpecificationVersion(specificationId: string) {
     mutationFn: (versionNumber: number) =>
       apiPost<SpecificationVersion>(
         `/specifications/${specificationId}/versions/${versionNumber}/restore`,
+      ),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["specification", specificationId, "versions"] }),
+  });
+}
+
+/** follow-up: discard a version the analyst decided not to approve — the backend blocks this once APPROVED. */
+export function useDeactivateSpecificationVersion(specificationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (versionNumber: number) =>
+      apiPost<{ deactivated: boolean }>(
+        `/specifications/${specificationId}/versions/${versionNumber}/deactivate`,
       ),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["specification", specificationId, "versions"] }),

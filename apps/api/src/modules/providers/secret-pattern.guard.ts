@@ -1,8 +1,10 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
 
-const SECRET_LOOKING_KEY = /key|secret|token|password|credential/i;
+// follow-up: exported so production-reference.guard.ts can reuse the same
+// patterns when scanning cloned Artefato repositories, instead of duplicating them.
+export const SECRET_LOOKING_KEY = /key|secret|token|password|credential/i;
 // Common API-key shapes: long base64/hex-ish runs, or vendor-prefixed tokens (sk-, ghp_, ...).
-const SECRET_LOOKING_VALUE = /^(sk-|ghp_|gho_|xox[baprs]-)|^[A-Za-z0-9+/_-]{32,}$/;
+export const SECRET_LOOKING_VALUE = /^(sk-|ghp_|gho_|xox[baprs]-)|^[A-Za-z0-9+/_-]{32,}$/;
 
 /**
  * spec 002 FR-031: best-effort guard, not a guarantee — rejects a

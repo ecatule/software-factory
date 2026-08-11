@@ -16,10 +16,7 @@ interface ProjectFormValues {
   clientId: string;
   name: string;
   requiredTestSuites: string;
-  productionBranch: string;
-  homologationBranch: string;
-  homologationEnvironment: string;
-  productionEnvironment: string;
+  constitution: string;
 }
 
 function splitSuites(value: string): string[] {
@@ -58,10 +55,7 @@ export function Projects() {
       clientId: clientFilter || "",
       name: "",
       requiredTestSuites: "",
-      productionBranch: "",
-      homologationBranch: "",
-      homologationEnvironment: "",
-      productionEnvironment: "",
+      constitution: "",
     });
     setSaveError(null);
     setIsCreating(true);
@@ -72,10 +66,7 @@ export function Projects() {
       clientId: project.clientId,
       name: project.name,
       requiredTestSuites: project.requiredTestSuites.join(", "),
-      productionBranch: project.productionBranch ?? "",
-      homologationBranch: project.homologationBranch ?? "",
-      homologationEnvironment: project.homologationEnvironment ?? "",
-      productionEnvironment: project.productionEnvironment ?? "",
+      constitution: project.constitution ?? "",
     });
     setSaveError(null);
     setEditing(project);
@@ -84,19 +75,13 @@ export function Projects() {
   async function onSubmit(values: ProjectFormValues) {
     setSaveError(null);
     const requiredTestSuites = splitSuites(values.requiredTestSuites);
-    const branchFields = {
-      productionBranch: values.productionBranch,
-      homologationBranch: values.homologationBranch,
-      homologationEnvironment: values.homologationEnvironment,
-      productionEnvironment: values.productionEnvironment,
-    };
     try {
       if (editing) {
         await updateProject.mutateAsync({
           id: editing.id,
           name: values.name,
           requiredTestSuites,
-          ...branchFields,
+          constitution: values.constitution,
         });
         setEditing(null);
       } else {
@@ -152,6 +137,7 @@ export function Projects() {
           setIsCreating(false);
           setEditing(null);
         }}
+        className={editing ? "modal-wide" : undefined}
       >
         <form onSubmit={handleSubmit(onSubmit)}>
           {saveError && <p className="form-error">{saveError}</p>}
@@ -174,21 +160,13 @@ export function Projects() {
             registration={register("requiredTestSuites")}
           />
           {editing && (
-            <>
-              <FormField label="Production branch" registration={register("productionBranch")} />
-              <FormField
-                label="Homologation branch"
-                registration={register("homologationBranch")}
-              />
-              <FormField
-                label="Homologation environment"
-                registration={register("homologationEnvironment")}
-              />
-              <FormField
-                label="Production environment"
-                registration={register("productionEnvironment")}
-              />
-            </>
+            <div className="form-field">
+              <label htmlFor="constitution">
+                Constitution (aplicada em <code>.specify/memory/constitution.md</code> de toda
+                demanda deste projeto antes de rodar specify/plan/tasks/implement)
+              </label>
+              <textarea id="constitution" rows={16} {...register("constitution")} />
+            </div>
           )}
           <button type="submit">Save</button>
         </form>
