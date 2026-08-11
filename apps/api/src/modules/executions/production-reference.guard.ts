@@ -3,7 +3,7 @@ import { readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { SECRET_LOOKING_KEY, SECRET_LOOKING_VALUE } from "../providers/secret-pattern.guard";
-import type { SanitizationRule } from "./project-environment-config";
+import type { AllowedHost, AllowedSecretVariable, SanitizationRule } from "./project-environment-config";
 
 const execAsync = promisify(exec);
 
@@ -203,9 +203,13 @@ function ruleMatches(rule: SanitizationRule, key: string, value: string): boolea
  * real-looking secret. The thrown Error's message is persisted verbatim as
  * the AgentExecution's `error` by ExecutionsProcessor's existing catch-all.
  */
-export async function assertRepositoriesAreProductionSafe(repoPaths: string[]): Promise<void> {
+export async function assertRepositoriesAreProductionSafe(
+  repoPaths: string[],
+  allowedSecrets: AllowedSecretVariable[] = [],
+  allowedHosts: AllowedHost[] = [],
+): Promise<void> {
   for (const repoPath of repoPaths) {
-    const finding = await scanRepository(repoPath);
+    const finding = await scanRepository(repoPath, allowedSecrets, allowedHosts);
     if (finding) {
       throw new Error(
         `Pre-implement safety check failed — refusing to let the Developer Agent edit ` +
@@ -215,7 +219,11 @@ export async function assertRepositoriesAreProductionSafe(repoPaths: string[]): 
   }
 }
 
-async function scanRepository(repoPath: string): Promise<ProductionReferenceFinding | null> {
+async function scanRepository(
+  repoPath: string,
+  allowedSecrets: AllowedSecretVariable[],
+  allowedHosts: AllowedHost[],
+): Promise<ProductionReferenceFinding | null> {
   const trackedFiles = await listTrackedFiles(repoPath);
 
   for (const relativePath of trackedFiles) {
@@ -225,7 +233,11 @@ async function scanRepository(repoPath: string): Promise<ProductionReferenceFind
     const content = await readTextFile(absolutePath);
     if (content === null) continue;
 
-    const unsafeHost = findUnsafeConnectionStringHost(content);
+    const basename = path.basename(relativePath).toLowerCase();
+    const applicableHostAllowlist = allowedHosts.filter((entry) =>
+      entry.appliesToFiles.some((f) => f.toLowerCase() === basename),
+    );
+    const unsafeHost = findUnsafeConnectionStringHost(content, applicableHostAllowlist);
     if (unsafeHost) {
       return {
         repoPath,
@@ -234,7 +246,10 @@ async function scanRepository(repoPath: string): Promise<ProductionReferenceFind
       };
     }
 
-    const secretKey = findSecretLookingAssignment(content);
+    const applicableSecretAllowlist = allowedSecrets.filter((entry) =>
+      entry.appliesToFiles.some((f) => f.toLowerCase() === basename),
+    );
+    const secretKey = findSecretLookingAssignment(content, applicableSecretAllowlist);
     if (secretKey) {
       return {
         repoPath,
@@ -245,6 +260,20 @@ async function scanRepository(repoPath: string): Promise<ProductionReferenceFind
   }
 
   return null;
+}
+
+function isAllowedSecretVariable(key: string, allowlist: AllowedSecretVariable[]): boolean {
+  const lowerKey = key.toLowerCase();
+  return allowlist.some((entry) => {
+    if (entry.variableName) return lowerKey === entry.variableName.toLowerCase();
+    if (entry.variableNameContains) return lowerKey.includes(entry.variableNameContains.toLowerCase());
+    return false;
+  });
+}
+
+function isAllowedHost(host: string, allowlist: AllowedHost[]): boolean {
+  const lowerHost = host.toLowerCase();
+  return allowlist.some((entry) => lowerHost.includes(entry.hostContains.toLowerCase()));
 }
 
 async function listTrackedFiles(repoPath: string): Promise<string[]> {
@@ -277,21 +306,25 @@ async function readTextFile(absolutePath: string): Promise<string | null> {
   return BINARY_CONTENT_MARKER.test(content) ? null : content;
 }
 
-function findUnsafeConnectionStringHost(content: string): string | null {
+function findUnsafeConnectionStringHost(content: string, allowlist: AllowedHost[]): string | null {
   DB_CONNECTION_STRING.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = DB_CONNECTION_STRING.exec(content))) {
     const host = match[2];
-    if (host && !isPrivateOrSafeHost(host)) return host;
+    if (host && !isPrivateOrSafeHost(host) && !isAllowedHost(host, allowlist)) return host;
   }
   return null;
 }
 
-function findSecretLookingAssignment(content: string): string | null {
+function findSecretLookingAssignment(
+  content: string,
+  allowlist: AllowedSecretVariable[],
+): string | null {
   for (const line of content.split(/\r\n|\n/)) {
     const key = extractVariableName(line);
     const match = ASSIGNMENT_LINE.exec(line);
     if (!key || !match) continue;
+    if (isAllowedSecretVariable(key, allowlist)) continue;
     const value = match[2];
     if (SECRET_LOOKING_KEY.test(key) && SECRET_LOOKING_VALUE.test(value)) return key;
   }

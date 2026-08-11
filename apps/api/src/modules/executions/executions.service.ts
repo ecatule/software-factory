@@ -18,21 +18,51 @@ export class ExecutionsService {
   ) {}
 
   /** spec 002 FR-021/FR-022: paginated, on top of 001's demand/agent/status filters. */
-  list(demandId: string | undefined, agentId: string | undefined, status: string | undefined, page: number, pageSize: number) {
+  async list(demandId: string | undefined, agentId: string | undefined, status: string | undefined, page: number, pageSize: number) {
     const where = { demandId, agentId, status: status as never };
-    return paginate(
+    const result = await paginate(
       (skip, take) =>
-        this.prisma.db.agentExecution.findMany({ where, orderBy: { createdAt: "desc" }, skip, take }),
+        this.prisma.db.agentExecution.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          skip,
+          take,
+          include: { agent: true },
+        }),
       () => this.prisma.db.agentExecution.count({ where }),
       page,
       pageSize,
     );
+    return { ...result, items: await this.withDemandTitles(result.items) };
   }
 
   async get(id: string) {
-    const execution = await this.prisma.db.agentExecution.findUnique({ where: { id } });
+    const execution = await this.prisma.db.agentExecution.findUnique({
+      where: { id },
+      include: { agent: true },
+    });
     if (!execution) throw new NotFoundException(`AgentExecution ${id} not found`);
-    return execution;
+    const [withTitle] = await this.withDemandTitles([execution]);
+    return withTitle;
+  }
+
+  /**
+   * follow-up: `AgentExecution` has no Prisma relation to `Demand` (only the
+   * scalar `demandId` FK, same convention as `ArtifactRepository` elsewhere
+   * in this schema) — resolved with one bulk lookup instead of a relation
+   * `include`, so the Executions screen can show the demand's title instead
+   * of its raw id.
+   */
+  private async withDemandTitles<T extends { demandId: string }>(
+    executions: T[],
+  ): Promise<(T & { demandTitle: string | null })[]> {
+    const demandIds = [...new Set(executions.map((e) => e.demandId))];
+    const demands = await this.prisma.db.demand.findMany({
+      where: { id: { in: demandIds } },
+      select: { id: true, title: true },
+    });
+    const titleById = new Map(demands.map((d) => [d.id, d.title]));
+    return executions.map((e) => ({ ...e, demandTitle: titleById.get(e.demandId) ?? null }));
   }
 
   /** spec User Stories 2 & 6: enqueues a BullMQ job; returns immediately QUEUED. */

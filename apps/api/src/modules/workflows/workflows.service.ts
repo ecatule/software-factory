@@ -89,6 +89,41 @@ export class WorkflowsService {
   }
 
   /**
+   * follow-up: unlike `advanceToNextStage` (exactly one hop, used by the
+   * generic per-SDD-stage execution branch), this jumps straight to
+   * `targetStageKey` — for callers that know several stages effectively
+   * already happened through a path that never called `advanceToNextStage`
+   * per step (e.g., SPEC/PLAN arriving via "Anexar arquivos prontos" upload,
+   * or the Developer Agent's single execution internally running
+   * tasks/analyze/checklist/implement). Never moves backward: a no-op if
+   * `targetStageKey` is at or before the demand's current stage in this
+   * workflow's linear `order`. Doesn't validate a `WorkflowTransition` edge
+   * exists (unlike `transition()`) — deliberately, since "catching up" to a
+   * known-reached stage isn't the same operation as a single explicit
+   * user-driven hop.
+   */
+  async advanceToStage(demandId: string, targetStageKey: string, actingUserId?: string) {
+    const demand = await this.prisma.db.demand.findUniqueOrThrow({ where: { id: demandId } });
+    const workflow = await this.resolveWorkflow(demand.projectId);
+    const stages = await this.prisma.db.workflowStage.findMany({
+      where: { workflowId: workflow.id },
+      orderBy: { order: "asc" },
+    });
+    const currentIndex = stages.findIndex((s) => s.key === demand.status);
+    const targetIndex = stages.findIndex((s) => s.key === targetStageKey);
+    if (targetIndex === -1 || currentIndex === -1 || targetIndex <= currentIndex) {
+      return demand;
+    }
+
+    const updated = await this.prisma.db.demand.update({
+      where: { id: demandId },
+      data: { status: targetStageKey, updatedBy: actingUserId },
+    });
+    await this.recordStageTransition(demandId, demand.status, targetStageKey, actingUserId);
+    return updated;
+  }
+
+  /**
    * feature 004 (spec FR-011, research.md §6): explicit AuditLog write so
    * stage transitions are captured even when triggered from a BullMQ worker
    * (ExecutionsProcessor calling advanceToNextStage), which the global

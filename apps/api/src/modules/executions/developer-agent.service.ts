@@ -8,7 +8,11 @@ import {
 } from "@software-factory/domain";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { WORKSPACE_ROOT } from "../workspaces/workspaces.service";
-import { loadProjectSanitizationRules } from "./project-environment-config";
+import {
+  loadProjectAllowedHosts,
+  loadProjectAllowedSecrets,
+  loadProjectSanitizationRules,
+} from "./project-environment-config";
 import { assertRepositoriesAreProductionSafe, sanitizeRepositories } from "./production-reference.guard";
 import { composeOwnerRepo } from "./repository-reference";
 
@@ -147,6 +151,8 @@ export class DeveloperAgentService {
 
     const repoPaths = links.map((link) => this.resolveClonePath(workspacePath, link.externalReference));
     const rules = await loadProjectSanitizationRules(demand.projectId);
+    const allowedSecrets = await loadProjectAllowedSecrets(demand.projectId);
+    const allowedHosts = await loadProjectAllowedHosts(demand.projectId);
 
     const changes = await sanitizeRepositories(repoPaths, rules);
     if (changes.length > 0) {
@@ -162,7 +168,7 @@ export class DeveloperAgentService {
     }
 
     try {
-      await assertRepositoriesAreProductionSafe(repoPaths);
+      await assertRepositoriesAreProductionSafe(repoPaths, allowedSecrets, allowedHosts);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await this.prisma.db.auditLog.create({
@@ -176,6 +182,40 @@ export class DeveloperAgentService {
       });
       throw error;
     }
+  }
+
+  /**
+   * follow-up: `/speckit-implement` only ever finds work if
+   * `specs/<NNN-slug>/spec.md`/`plan.md` exist — real Spec Kit writes these
+   * when `/speckit-specify`/`/speckit-plan` run for real. When a demand's
+   * SPEC/PLAN content instead comes from "Anexar arquivos prontos" (a
+   * manual, Postgres-only upload) or the "Aprovar e executar" review step,
+   * those files never existed. Just the FETCH half of the fix — resolves
+   * the demand's current (`Specification.currentVersionId`) SPEC/PLAN
+   * content so `ExecutionsProcessor` can pass it through `SDDInput.context`
+   * to `SpecKitProvider`, which does the actual filesystem sync (must
+   * happen there, strictly AFTER `specify init` runs — that command can
+   * overwrite `.specify/`, so writing the feature files before it would
+   * risk them being wiped).
+   */
+  async resolveCurrentSpecAndPlanContent(
+    demandId: string,
+  ): Promise<{ specContent?: string; planContent?: string }> {
+    const specifications = await this.prisma.db.specification.findMany({
+      where: { demandId, documentType: { in: ["SPEC", "PLAN"] } },
+    });
+
+    const result: { specContent?: string; planContent?: string } = {};
+    for (const specification of specifications) {
+      if (!specification.currentVersionId) continue;
+      const version = await this.prisma.db.specificationVersion.findUnique({
+        where: { id: specification.currentVersionId },
+      });
+      if (!version) continue;
+      if (specification.documentType === "SPEC") result.specContent = version.content;
+      if (specification.documentType === "PLAN") result.planContent = version.content;
+    }
+    return result;
   }
 
   /** follow-up: also used by `GitService.commit()` to locate the same clone. */

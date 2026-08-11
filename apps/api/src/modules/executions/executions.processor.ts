@@ -72,23 +72,97 @@ export class ExecutionsProcessor extends WorkerHost {
       const constitution = demand.project.constitution ?? undefined;
 
       if (execution.agent.type === "developer") {
+        // follow-up: the developer pipeline runs several minutes-long steps
+        // in sequence inside ONE AgentExecution — without this, the only
+        // externally visible state was QUEUED/RUNNING for the whole
+        // duration, with no way to tell which step was actually in
+        // progress. Reuses the existing (otherwise unused-by-this-branch)
+        // `pipelineStage` column as a live progress marker, polled by the
+        // frontend the same way `status` already is.
+        const updateProgress = (pipelineStage: string) =>
+          this.prisma.db.agentExecution.update({ where: { id: execution.id }, data: { pipelineStage } });
+
+        // follow-up: SPEC/PLAN reaching this point never went through the
+        // generic per-stage execution branch below (its own
+        // `advanceToNextStage` call never ran) — they either came from
+        // "Anexar arquivos prontos" (a plain upload, no AgentExecution at
+        // all) or the specification_copilot branch (which also never
+        // advances the workflow). Demand.status was staying stuck at "NEW"
+        // regardless of real progress. `advanceToStage` catches it up in one
+        // jump instead of requiring a hop per skipped stage.
+        await this.workflows.advanceToStage(execution.demandId, "DEVELOPMENT");
+
         // spec User Story 6: reuse ONE branch per repository for this demand
         // (spec Edge Cases), then clone it locally so "Modo B" (headless
         // Claude Code) has real files to edit, then implement, then record
         // file changes (DISCOVERED files get a justification — spec FR-017).
+        await updateProgress("branches");
         await this.developerAgent.ensureBranchesForDemand(execution.demandId);
+        await updateProgress("cloning");
         await this.developerAgent.ensureRepositoriesCloned(execution.demandId, workspacePath);
         // security: cloned but not yet touched by the AI — the one moment
         // to refuse before the Developer Agent can read/act on production data.
+        await updateProgress("safety-check");
         await this.developerAgent.enforceProductionSafety(execution.demandId, workspacePath);
         const context = await this.providerConfiguration.resolveSddContext(
           demand.projectId,
           "implement",
         );
+        // follow-up: "Anexar arquivos prontos"/"Aprovar e executar" only
+        // ever write to Postgres (SpecificationVersion) — never to the
+        // workspace's `specs/<NNN>/spec.md`/`plan.md` files a real
+        // `/speckit-specify`/`/speckit-plan` run would have produced.
+        // Passed through so SpecKitProvider can sync them onto disk right
+        // after `specify init` runs (never before — that command can wipe
+        // `.specify/`), so `/speckit-implement` always sees this Software
+        // Factory's current approved content regardless of how it got there.
+        const { specContent, planContent } = await this.developerAgent.resolveCurrentSpecAndPlanContent(
+          execution.demandId,
+        );
+        const sddContext = {
+          ...context,
+          constitution,
+          specContent,
+          planContent,
+          demandTitle: demand.title,
+        };
+
+        // follow-up (live-validation finding): `/speckit-implement` refuses
+        // to proceed without a `tasks.md` breakdown ("no tasks.md, please
+        // run /speckit-tasks first"), and `/speckit-analyze` itself
+        // requires `tasks.md` to already exist. Every developer execution
+        // must run the full pre-implement SDD chain — not just spec/plan —
+        // regardless of whether spec/plan came from a real pipeline run or
+        // a manual upload.
+        await updateProgress("tasks");
+        const tasksResult = await this.sddProvider.tasks({
+          demandId: execution.demandId,
+          workspacePath,
+          context: sddContext,
+        });
+        await this.writeSpecificationVersion(execution, "tasks", tasksResult.content);
+
+        await updateProgress("analyze");
+        const analyzeResult = await this.sddProvider.analyze({
+          demandId: execution.demandId,
+          workspacePath,
+          context: sddContext,
+        });
+        await this.writeSpecificationVersion(execution, "analyze", analyzeResult.content);
+
+        await updateProgress("checklist");
+        const checklistResult = await this.sddProvider.checklist({
+          demandId: execution.demandId,
+          workspacePath,
+          context: sddContext,
+        });
+        await this.writeSpecificationVersion(execution, "checklist", checklistResult.content);
+
+        await updateProgress("implement");
         const result = await this.sddProvider.implement({
           demandId: execution.demandId,
           workspacePath,
-          context: { ...context, constitution },
+          context: sddContext,
         });
 
         const [firstArtifact] = await this.prisma.db.artifact.findMany({
@@ -111,6 +185,7 @@ export class ExecutionsProcessor extends WorkerHost {
           where: { id: execution.id },
           data: { status: "COMPLETED", finishedAt: new Date(), output: result },
         });
+        await this.workflows.advanceToStage(execution.demandId, "TESTING");
         return;
       }
 
@@ -180,6 +255,9 @@ export class ExecutionsProcessor extends WorkerHost {
           error: error instanceof Error ? error.message : String(error),
         },
       });
+      if (execution.agent.type === "developer") {
+        await this.workflows.advanceToStage(execution.demandId, "FAILED");
+      }
       throw error;
     }
   }

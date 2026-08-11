@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost } from "./api";
+import type { Execution } from "./useExecutions";
 
 export interface Agent {
   id: string;
@@ -23,7 +24,7 @@ export interface TriggerExecutionInput {
 export function useTriggerExecution() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: TriggerExecutionInput) => apiPost("/executions", input),
+    mutationFn: (input: TriggerExecutionInput) => apiPost<Execution>("/executions", input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["executions"] }),
   });
 }

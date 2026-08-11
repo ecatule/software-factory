@@ -53,8 +53,45 @@ export interface SanitizationRule {
   replacement: string;
 }
 
+/**
+ * An explicit, per-project exception: "this variable is known to look like a
+ * real secret, but the project owner has decided it's fine for the
+ * Developer Agent to see it as-is" — e.g. because there is no safe
+ * homologation replacement to swap it for, and the risk was accepted
+ * consciously rather than the check being silently bypassed. `reason` is
+ * required so an allowlist entry always carries a human-readable
+ * justification, matching this project's audit-everything posture even
+ * though this specific decision isn't itself written to AuditLog (it's
+ * treated the same as any other "this isn't actually production" signal
+ * already baked into the guard, e.g. `localhost`).
+ */
+export interface AllowedSecretVariable {
+  id: string;
+  appliesToFiles: string[];
+  variableName?: string;
+  variableNameContains?: string;
+  reason: string;
+}
+
+/**
+ * Same idea as `AllowedSecretVariable`, but for the OTHER generic block —
+ * a database connection string (`findUnsafeConnectionStringHost`) whose
+ * host doesn't look local/dev/homologation. Some files (e.g.
+ * `docker-compose.yml`) the project owner explicitly does not want this
+ * guard rewriting (unlike `.env`, covered by a `SanitizationRule` instead),
+ * so this only ever suppresses the block — it never modifies the file.
+ */
+export interface AllowedHost {
+  id: string;
+  appliesToFiles: string[];
+  hostContains: string;
+  reason: string;
+}
+
 interface ProjectEnvironmentConfig {
   rules?: SanitizationRule[];
+  allowedSecrets?: AllowedSecretVariable[];
+  allowedHosts?: AllowedHost[];
 }
 
 /**
@@ -74,4 +111,34 @@ export async function loadProjectSanitizationRules(projectId: string): Promise<S
 
   const config = JSON.parse(raw) as ProjectEnvironmentConfig;
   return config.rules ?? [];
+}
+
+/** Returns [] when no config file exists for this project, or it has no `allowedSecrets` — the pre-implement gate falls back to blocking on every secret-looking value. */
+export async function loadProjectAllowedSecrets(projectId: string): Promise<AllowedSecretVariable[]> {
+  const filePath = path.join(PROJECT_ENV_CONFIG_DIR, `${projectId}.json`);
+  let raw: string;
+  try {
+    raw = await readFile(filePath, "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+
+  const config = JSON.parse(raw) as ProjectEnvironmentConfig;
+  return config.allowedSecrets ?? [];
+}
+
+/** Returns [] when no config file exists for this project, or it has no `allowedHosts` — the pre-implement gate falls back to blocking on every unrecognized connection-string host. */
+export async function loadProjectAllowedHosts(projectId: string): Promise<AllowedHost[]> {
+  const filePath = path.join(PROJECT_ENV_CONFIG_DIR, `${projectId}.json`);
+  let raw: string;
+  try {
+    raw = await readFile(filePath, "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+
+  const config = JSON.parse(raw) as ProjectEnvironmentConfig;
+  return config.allowedHosts ?? [];
 }

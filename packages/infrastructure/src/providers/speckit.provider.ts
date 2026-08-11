@@ -46,6 +46,32 @@ const CLARIFY_UNATTENDED_NOTE =
   "Running unattended (no human available): for every clarification question, " +
   "automatically accept the Recommended/Suggested option instead of waiting for a reply.";
 
+const CHECKLIST_UNATTENDED_NOTE =
+  "Running unattended (no human available): skip every clarifying question and generate the " +
+  "checklist immediately using the stated defaults (Depth: Standard, Audience: Reviewer, " +
+  "Focus: top relevance clusters inferred from spec/plan) without asking anything.";
+
+const IMPLEMENT_UNATTENDED_NOTE =
+  "Running unattended (no human available): a freshly generated checklist always starts with " +
+  "every item unchecked, so if any checklist has incomplete items, treat that exactly as if a " +
+  "human had already replied 'yes, proceed anyway' — continue straight into implementation " +
+  "instead of stopping to ask.";
+
+const DIACRITICS_PATTERN = new RegExp("[\\u0300-\\u036f]", "g");
+
+/** Mirrors WorkspacesService's slugify (apps/api) — duplicated rather than imported, since packages/infrastructure can't depend on apps/api. Capped at 5 words for a readable `specs/001-<slug>/` directory name. */
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(DIACRITICS_PATTERN, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "")
+    .split("-")
+    .slice(0, 5)
+    .join("-");
+}
+
 /**
  * spec FR-009: the only adapter that shells out to the SDD pipeline.
  *
@@ -98,17 +124,30 @@ export class SpecKitProvider implements SDDProvider {
   }
 
   async implement(input: SDDInput): Promise<ImplementationResult> {
-    await this.ensureInitialized(input.workspacePath, input.context?.constitution as string | undefined);
-    const summary = await this.runClaude("implement", "/speckit-implement", input);
+    await this.prepareWorkspace(input.workspacePath, input.context);
+    const summary = await this.runClaude(
+      "implement",
+      `/speckit-implement\n\n${IMPLEMENT_UNATTENDED_NOTE}`,
+      input,
+    );
     const filesChanged = await this.collectChangedFiles(input.workspacePath);
     return { filesChanged, summary };
+  }
+
+  /** Shared by every stage (including `implement`): scaffold once, then sync the demand's current Postgres SPEC/PLAN onto disk. */
+  private async prepareWorkspace(
+    workspacePath: string,
+    context: Record<string, unknown> | undefined,
+  ): Promise<void> {
+    await this.ensureInitialized(workspacePath, context?.constitution as string | undefined);
+    await this.syncFeatureFiles(workspacePath, context);
   }
 
   private async runStage(
     stage: keyof typeof STAGE_TO_OUTPUT_FILE,
     input: SDDInput,
   ): Promise<ArtifactResult> {
-    await this.ensureInitialized(input.workspacePath, input.context?.constitution as string | undefined);
+    await this.prepareWorkspace(input.workspacePath, input.context);
 
     const description = input.context?.description as string | undefined;
     if (stage === "specify" && !description?.trim()) {
@@ -123,17 +162,70 @@ export class SpecKitProvider implements SDDProvider {
         ? `/speckit-specify ${description}`
         : stage === "clarify"
           ? `/speckit-clarify\n\n${CLARIFY_UNATTENDED_NOTE}`
-          : `/speckit-${stage}`;
-    await this.runClaude(stage, prompt, input);
+          : stage === "checklist"
+            ? `/speckit-checklist\n\n${CHECKLIST_UNATTENDED_NOTE}`
+            : `/speckit-${stage}`;
+    const rawOutput = await this.runClaude(stage, prompt, input);
 
     // The real Spec Kit CLI writes into a dynamically numbered
     // `specs/<NNN-slug>/` feature directory (created by `specify`, reused
     // by every later stage) — not a fixed path, so it's resolved after the
     // fact rather than assumed.
     const featureDir = await this.resolveFeatureDir(input.workspacePath);
+    return this.resolveStageOutput(stage, featureDir, rawOutput);
+  }
+
+  /**
+   * `tasks`/`specify`/`clarify`/`plan` write a fixed, well-known file — but
+   * `checklist` names its own file dynamically (`ux.md`, `security.md`, ...)
+   * and `analyze` is explicitly documented as STRICTLY READ-ONLY (it never
+   * writes a file at all, only returns a report as CLI output) — both need
+   * special handling instead of the fixed-path read every other stage uses.
+   */
+  private async resolveStageOutput(
+    stage: keyof typeof STAGE_TO_OUTPUT_FILE,
+    featureDir: string,
+    rawOutput: string,
+  ): Promise<ArtifactResult> {
+    if (stage === "analyze") {
+      const content = this.extractClaudeResultText(rawOutput);
+      const documentPath = path.join(featureDir, STAGE_TO_OUTPUT_FILE.analyze);
+      await writeFile(documentPath, content, "utf-8");
+      return { documentPath, content };
+    }
+
+    if (stage === "checklist") {
+      const checklistsDir = path.join(featureDir, "checklists");
+      const entries = await readdir(checklistsDir, { withFileTypes: true }).catch(() => []);
+      const files = entries
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+        .map((entry) => entry.name)
+        .sort();
+      const latest = files.at(-1);
+      if (!latest) {
+        throw new Error(`SDD stage "checklist" produced no file under ${checklistsDir}.`);
+      }
+      const documentPath = path.join(checklistsDir, latest);
+      const content = await readFile(documentPath, "utf-8");
+      return { documentPath, content };
+    }
+
     const documentPath = path.join(featureDir, STAGE_TO_OUTPUT_FILE[stage]);
     const content = await readFile(documentPath, "utf-8");
     return { documentPath, content };
+  }
+
+  /** `runClaude` returns the CLI's raw `--output-format json` stdout — pull out the human-readable `result` field when present. */
+  private extractClaudeResultText(rawOutput: string): string {
+    try {
+      const parsed = JSON.parse(rawOutput) as { result?: string };
+      if (typeof parsed.result === "string" && parsed.result.trim()) {
+        return parsed.result;
+      }
+    } catch {
+      // not JSON, or no "result" field — fall back to the raw output as-is
+    }
+    return rawOutput;
   }
 
   /** Each demand's workspace is a fresh Spec Kit project, so `specs/` holds exactly one feature dir — pick the newest if more than one ever appears. */
@@ -167,7 +259,14 @@ export class SpecKitProvider implements SDDProvider {
    */
   private async ensureInitialized(workspacePath: string, constitution?: string): Promise<void> {
     await mkdir(workspacePath, { recursive: true });
-    const marker = path.join(workspacePath, ".specify");
+    // follow-up: `.specify/templates/` (not just bare `.specify/`) — only
+    // the real `specify init` creates this. `syncFeatureFiles` below may
+    // create `.specify/feature.json` ahead of a first-ever init on this
+    // workspace; checking the bare directory would then wrongly read as
+    // "already initialized" and skip `specify init` entirely, leaving the
+    // workspace without the real `.claude/skills/`/`.specify/scripts/`
+    // scaffold `/speckit-implement` itself depends on.
+    const marker = path.join(workspacePath, ".specify", "templates");
     const alreadyInitialized = await this.pathExists(marker);
     if (!alreadyInitialized) {
       await execAsync(
@@ -186,6 +285,69 @@ export class SpecKitProvider implements SDDProvider {
       await mkdir(path.dirname(constitutionPath), { recursive: true });
       await writeFile(constitutionPath, constitution, "utf-8");
     }
+  }
+
+  /**
+   * follow-up: `/speckit-implement` only ever finds work if
+   * `specs/<NNN-slug>/spec.md`/`plan.md` exist — real Spec Kit writes these
+   * when `/speckit-specify`/`/speckit-plan` run for real. When a demand's
+   * approved SPEC/PLAN content instead came from a manual upload ("Anexar
+   * arquivos prontos") or the "Aprovar e executar" review step, those files
+   * never existed on disk. `ExecutionsProcessor` resolves the current
+   * content from Postgres and passes it through `context.specContent`/
+   * `context.planContent` (`context.demandTitle` names the feature
+   * directory the first time) — this writes it into the workspace, called
+   * strictly AFTER `ensureInitialized` (never before: `specify init` can
+   * overwrite `.specify/`, which would risk wiping these files or
+   * `feature.json` if they existed first).
+   */
+  private async syncFeatureFiles(
+    workspacePath: string,
+    context: Record<string, unknown> | undefined,
+  ): Promise<void> {
+    const specContent = context?.specContent as string | undefined;
+    const planContent = context?.planContent as string | undefined;
+    if (!specContent?.trim() && !planContent?.trim()) return;
+
+    const demandTitle = (context?.demandTitle as string | undefined) ?? "feature";
+    const featureDir = await this.resolveOrCreateFeatureDir(workspacePath, demandTitle);
+
+    if (specContent?.trim()) {
+      await writeFile(path.join(featureDir, "spec.md"), specContent, "utf-8");
+    }
+    if (planContent?.trim()) {
+      await writeFile(path.join(featureDir, "plan.md"), planContent, "utf-8");
+    }
+  }
+
+  /**
+   * Reuses the feature directory `.specify/feature.json` already points at
+   * if one exists (so re-syncing on a later execution doesn't fork into a
+   * second feature dir) — creates `specs/001-<slug>/` the first time,
+   * mirroring what `/speckit-specify` itself would persist to
+   * `.specify/feature.json` per its own skill instructions.
+   */
+  private async resolveOrCreateFeatureDir(workspacePath: string, demandTitle: string): Promise<string> {
+    const featureJsonPath = path.join(workspacePath, ".specify", "feature.json");
+    try {
+      const raw = await readFile(featureJsonPath, "utf-8");
+      const parsed = JSON.parse(raw) as { feature_directory?: string };
+      if (parsed.feature_directory) {
+        const absolute = path.join(workspacePath, parsed.feature_directory);
+        await mkdir(absolute, { recursive: true });
+        return absolute;
+      }
+    } catch {
+      // no feature.json yet (or unreadable/malformed) — create a fresh one below
+    }
+
+    const slug = slugify(demandTitle) || "feature";
+    const relativeDir = `specs/001-${slug}`;
+    const absoluteDir = path.join(workspacePath, relativeDir);
+    await mkdir(absoluteDir, { recursive: true });
+    await mkdir(path.dirname(featureJsonPath), { recursive: true });
+    await writeFile(featureJsonPath, JSON.stringify({ feature_directory: relativeDir }, null, 2), "utf-8");
+    return absoluteDir;
   }
 
   private async pathExists(candidate: string): Promise<boolean> {

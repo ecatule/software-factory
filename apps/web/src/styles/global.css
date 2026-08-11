@@ -672,6 +672,20 @@ select:focus {
   color: var(--color-text);
 }
 
+/* follow-up: Revisão (Parte 5) — SPEC/PLAN side by side, scrolls independently on narrow viewports instead of overflowing the page. */
+.review-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  overflow-x: auto;
+}
+
+.review-actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
 .data-table-loading,
 .data-table-empty {
   padding: var(--space-6);

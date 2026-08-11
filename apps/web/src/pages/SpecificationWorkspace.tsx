@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import { MarkdownEditor, DiffView, Badge, DataTable, Modal } from "@software-factory/ui";
-import { apiGet } from "../services/api";
+import { apiGet, apiPost, ApiError } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useSpecification } from "../services/useSpecificationVersions";
 import {
@@ -25,6 +25,8 @@ import {
   type SystemArtifact,
 } from "../services/useSystems";
 import { useGeneratePromptSpec } from "../services/usePromptSpec";
+import { useAgentsList, useTriggerExecution } from "../services/useAgents";
+import { useExecution, pipelineStageLabel } from "../services/useExecutions";
 import type { Specification } from "../services/types";
 
 interface OriginBranch {
@@ -74,18 +76,28 @@ const STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger"> 
   SUPERSEDED: "warning",
 };
 
+const EXECUTION_STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger"> = {
+  QUEUED: "neutral",
+  RUNNING: "warning",
+  COMPLETED: "success",
+  FAILED: "danger",
+  CANCELLED: "neutral",
+};
+
 const WIZARD_STEPS = [
   "Informações",
   "Sistemas e Artefatos",
   "Prompt SPEC",
   "Anexar arquivos",
+  "Revisão",
 ] as const;
 
 /**
- * spec User Story 1: wizard de 4 etapas — Informações de negócio/técnicas →
+ * spec User Story 1: wizard de 5 etapas — Informações de negócio/técnicas →
  * Sistemas e Artefatos Envolvidos → Prompt SPEC (gerado automaticamente a
- * partir das etapas anteriores) → Anexar arquivos prontos. follow-up: era
- * uma tela única com rolagem longa; virou wizard por pedido do usuário,
+ * partir das etapas anteriores) → Anexar arquivos prontos → Revisão (SPEC
+ * + PLAN lado a lado, aprovar / aprovar e disparar o Developer Agent).
+ * follow-up: era uma tela única com rolagem longa; virou wizard por pedido do usuário,
  * com navegação livre entre etapas (todas ficam montadas, só escondidas
  * via CSS, pra não perder seleção não salva ao navegar) e duas ações
  * sempre acessíveis no topo (Histórico de versões, Outros documentos).
@@ -186,6 +198,8 @@ export function SpecificationWorkspace() {
       <div style={{ display: step === 3 ? undefined : "none" }}>
         {hasPermission("SPECIFICATION_WRITE") && <UploadPanel onUpload={handleUpload} />}
       </div>
+
+      <div style={{ display: step === 4 ? undefined : "none" }}>{demandId && <ReviewStep demandId={demandId} />}</div>
 
       <div className="wizard-nav">
         {step > 0 ? (
@@ -732,6 +746,24 @@ function UploadPanel({
 }) {
   const [specifyMarkdown, setSpecifyMarkdown] = useState("");
   const [planMarkdown, setPlanMarkdown] = useState("");
+  const [isBusy, setIsBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleClick() {
+    setError(null);
+    setMessage(null);
+    setIsBusy(true);
+    try {
+      await onUpload(specifyMarkdown, planMarkdown);
+      setMessage("Arquivos anexados com sucesso.");
+    } catch (err) {
+      setError(errorMessage(err, "Falha ao anexar os arquivos."));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   return (
     <section>
       <h2>Anexar arquivos prontos</h2>
@@ -747,13 +779,164 @@ function UploadPanel({
         value={planMarkdown}
         onChange={setPlanMarkdown}
       />
+      {error && <p className="form-error">{error}</p>}
+      {message && <p className="form-success">{message}</p>}
       <button
         type="button"
-        onClick={() => onUpload(specifyMarkdown, planMarkdown)}
-        disabled={!specifyMarkdown.trim() && !planMarkdown.trim()}
+        onClick={handleClick}
+        disabled={isBusy || (!specifyMarkdown.trim() && !planMarkdown.trim())}
       >
         Anexar
       </button>
     </section>
   );
+}
+
+/**
+ * follow-up (Parte 5): as duas especificações finais (SPEC + PLAN) lado a
+ * lado, somente leitura, com duas ações — "Aprovar" aprova a última versão
+ * de cada documento (pulando o que já estiver APPROVED); "Aprovar e
+ * executar" faz o mesmo e em seguida dispara o Developer Agent pra essa
+ * demanda (mesmo endpoint que a tela Agents usa). Conhecido: se o conteúdo
+ * só veio de "Anexar arquivos prontos" (nunca rodou /speckit-specify de
+ * verdade), o workspace não tem `specs/<NNN>/spec.md` ainda — o Developer
+ * Agent roda mas o Claude Code corretamente reporta que não há nada pra
+ * implementar, igual observado em validação ao vivo desta sessão.
+ */
+function ReviewStep({ demandId }: { demandId: string }) {
+  const queryClient = useQueryClient();
+  const { data: specifications } = useQuery({
+    queryKey: ["demand", demandId, "specifications"],
+    queryFn: () => apiGet<Specification[]>(`/demands/${demandId}/specifications`),
+    enabled: !!demandId,
+  });
+  const specDoc = specifications?.find((s) => s.documentType === "SPEC");
+  const planDoc = specifications?.find((s) => s.documentType === "PLAN");
+  const { data: specVersions } = useSpecificationVersionsList(specDoc?.id ?? "");
+  const { data: planVersions } = useSpecificationVersionsList(planDoc?.id ?? "");
+  const specLatest = specVersions?.[specVersions.length - 1];
+  const planLatest = planVersions?.[planVersions.length - 1];
+
+  const { data: agents } = useAgentsList();
+  const triggerExecution = useTriggerExecution();
+
+  const [isBusy, setIsBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  // follow-up: "Aprovar e executar" used to just show one static success
+  // message and leave the analyst with no visibility into what happened
+  // next — the Developer Agent run takes several minutes. Tracks the
+  // triggered execution's id so its live status/current step can be shown
+  // right here (same polling hook the Executions page uses).
+  const [runningExecutionId, setRunningExecutionId] = useState<string | null>(null);
+  const runningExecution = useExecution(runningExecutionId);
+
+  async function approveLatestVersions() {
+    const jobs: Promise<unknown>[] = [];
+    if (specDoc && specLatest && specLatest.status !== "APPROVED") {
+      jobs.push(apiPost(`/specifications/${specDoc.id}/versions/${specLatest.versionNumber}/approve`, {}));
+    }
+    if (planDoc && planLatest && planLatest.status !== "APPROVED") {
+      jobs.push(apiPost(`/specifications/${planDoc.id}/versions/${planLatest.versionNumber}/approve`, {}));
+    }
+    await Promise.all(jobs);
+    await queryClient.invalidateQueries({ queryKey: ["specification"] });
+  }
+
+  async function handleApprove() {
+    setError(null);
+    setMessage(null);
+    setIsBusy(true);
+    try {
+      await approveLatestVersions();
+      setMessage("Especificações aprovadas.");
+    } catch (err) {
+      setError(errorMessage(err, "Falha ao aprovar as especificações."));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleApproveAndExecute() {
+    setError(null);
+    setMessage(null);
+    setIsBusy(true);
+    try {
+      await approveLatestVersions();
+      const developerAgent = agents?.find((a) => a.type === "developer");
+      if (!developerAgent) {
+        throw new Error("Nenhum agente do tipo \"developer\" cadastrado.");
+      }
+      const execution = await triggerExecution.mutateAsync({ agentId: developerAgent.id, demandId });
+      setRunningExecutionId(execution.id);
+      setMessage("Especificações aprovadas e execução do Developer Agent disparada.");
+    } catch (err) {
+      setError(errorMessage(err, "Falha ao aprovar e executar."));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  const hasAnythingToApprove =
+    (!!specLatest && specLatest.status !== "APPROVED") || (!!planLatest && planLatest.status !== "APPROVED");
+
+  return (
+    <section>
+      <h2>Revisão</h2>
+      <div className="review-split">
+        <div>
+          <h3>SPEC {specLatest && <Badge label={specLatest.status} tone={STATUS_TONE[specLatest.status] ?? "neutral"} />}</h3>
+          {specLatest ? (
+            <MarkdownEditor value={specLatest.content} onChange={() => {}} readOnly />
+          ) : (
+            <p>Nenhuma versão ainda.</p>
+          )}
+        </div>
+        <div>
+          <h3>PLAN {planLatest && <Badge label={planLatest.status} tone={STATUS_TONE[planLatest.status] ?? "neutral"} />}</h3>
+          {planLatest ? (
+            <MarkdownEditor value={planLatest.content} onChange={() => {}} readOnly />
+          ) : (
+            <p>Nenhuma versão ainda.</p>
+          )}
+        </div>
+      </div>
+
+      {error && <p className="form-error">{error}</p>}
+      {message && <p className="form-success">{message}</p>}
+      {runningExecution.data && (
+        <p>
+          Execução do Developer Agent:{" "}
+          <Badge
+            label={runningExecution.data.status}
+            tone={EXECUTION_STATUS_TONE[runningExecution.data.status] ?? "neutral"}
+          />
+          {runningExecution.data.status === "RUNNING" &&
+            pipelineStageLabel(runningExecution.data.pipelineStage) && (
+              <> — {pipelineStageLabel(runningExecution.data.pipelineStage)}</>
+            )}
+          {runningExecution.data.status === "FAILED" && runningExecution.data.error && (
+            <span className="form-error"> — {runningExecution.data.error}</span>
+          )}
+        </p>
+      )}
+
+      <div className="review-actions">
+        <button type="button" onClick={handleApprove} disabled={isBusy || !hasAnythingToApprove}>
+          Aprovar
+        </button>
+        <button type="button" onClick={handleApproveAndExecute} disabled={isBusy || !specLatest || !planLatest}>
+          Aprovar e executar
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    const message = (error.body as { message?: string })?.message;
+    return message ?? `Request failed (${error.status}). Try reloading the page.`;
+  }
+  return error instanceof Error ? error.message : fallback;
 }

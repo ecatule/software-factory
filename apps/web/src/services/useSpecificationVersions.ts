@@ -74,14 +74,26 @@ export function useApproveSpecificationVersion(specificationId: string) {
   });
 }
 
-/** follow-up: uploading may create a version on the SIBLING (SPEC/PLAN) document too — invalidate broadly so "Outros documentos" picks up its new currentVersionId. */
+/**
+ * follow-up: `uploadVersion` on the backend always writes a version on BOTH
+ * the SPEC and PLAN Specification documents of the demand (resolved from
+ * `specificationId` only to find the demand — see
+ * `SpecificationsService.uploadVersion`), never just the one this page was
+ * opened with. Invalidating only `["specification", specificationId,
+ * "versions"]` left the SIBLING document's cached version list stale — bug:
+ * editing both specify.md/plan.md and clicking "Anexar" showed the correctly
+ * updated document but the other one kept showing its pre-edit content in
+ * "Revisão"/"Outros documentos" until a full page reload. Invalidating the
+ * whole `["specification"]` prefix (same pattern already used by
+ * `ReviewStep.approveLatestVersions`) catches both.
+ */
 export function useUploadSpecificationVersion(specificationId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: { specifyMarkdown?: string; planMarkdown?: string; reason?: string }) =>
       apiPost<SpecificationVersion[]>(`/specifications/${specificationId}/versions/upload`, input),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["specification", specificationId, "versions"] });
+      queryClient.invalidateQueries({ queryKey: ["specification"] });
       queryClient.invalidateQueries({ queryKey: ["demand"] });
     },
   });
