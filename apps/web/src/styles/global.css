@@ -271,6 +271,24 @@ select:focus {
   box-shadow: 0 0 0 3px var(--color-primary-soft);
 }
 
+/* Filter bars --------------------------------------------------------- */
+
+/* follow-up: `select`/`input` default to width:100% above — inside a plain
+   div with no layout of its own, every filter control stretched to fill the
+   row and stacked one per line (7 lines for the Demands page's filters).
+   Fixed 3-column grid instead, so exactly 3 filters sit per line. */
+.demands-filters {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.demands-filters select,
+.demands-filters input {
+  width: 100%;
+}
+
 /* App shell: persistent sidebar + content ---------------------------------- */
 
 .nav-shell {
@@ -522,6 +540,76 @@ select:focus {
   align-items: center;
   gap: var(--space-3);
   margin-bottom: var(--space-3);
+}
+
+.section-hint {
+  margin: 0 0 var(--space-3);
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+/* follow-up: Sistemas selection was a bare checkbox + name in a plain <ul> —
+   "meio jogado na tela sem destaque do que se trata" (user feedback). Now a
+   grid of selectable cards: name, description (when present), and a small
+   "Sistema" eyebrow label so it reads as a distinct, meaningful unit instead
+   of an anonymous checkbox row. */
+.system-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.system-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.system-card:hover {
+  border-color: var(--color-primary);
+}
+
+.system-card-selected {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.system-card input[type="checkbox"] {
+  width: auto;
+  margin-top: 2px;
+}
+
+.system-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.system-card-eyebrow {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-subtle);
+}
+
+.system-card-name {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.system-card-description {
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
 }
 
 /* follow-up: selected Sistema Artefatos on the SPEC screen, shown as chips

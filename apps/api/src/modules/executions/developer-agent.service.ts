@@ -9,7 +9,7 @@ import {
   type CodeRepositoryProvider,
 } from "@software-factory/domain";
 import { PrismaService } from "../../common/prisma/prisma.service";
-import { WORKSPACE_ROOT } from "../workspaces/workspaces.service";
+import { WORKSPACE_ROOT, slugify } from "../workspaces/workspaces.service";
 import {
   loadProjectAllowedHosts,
   loadProjectAllowedSecrets,
@@ -392,11 +392,26 @@ export class DeveloperAgentService {
     });
   }
 
-  private buildBranchName(policy: string, demand: { type: string; externalId: string }): string {
-    const slug = demand.externalId.toLowerCase();
+  /**
+   * follow-up: `<slug>` was declared in `branchNamingPolicy`'s default
+   * template but never actually implemented — `<ticket>-<slug>` collapsed
+   * to just the ticket, so every branch name (e.g. `feature/client/456123`)
+   * carried no hint of what the demand was actually about. Now folds in a
+   * short slug of the demand's title, e.g.
+   * `feature/client/456123-tipo-de-tabela-de-preco`. Falls back to the bare
+   * ticket when the title yields no usable slug (e.g. empty title, or only
+   * punctuation/diacritics-only content).
+   */
+  private buildBranchName(
+    policy: string,
+    demand: { type: string; externalId: string; title: string },
+  ): string {
+    const ticket = demand.externalId.toLowerCase();
+    const titleSlug = slugify(demand.title).split("-").filter(Boolean).slice(0, 5).join("-");
+    const ticketSlug = titleSlug ? `${ticket}-${titleSlug}` : ticket;
     return policy
       .replace("<type>", demand.type.toLowerCase())
       .replace("<client>", "client")
-      .replace("<ticket>-<slug>", slug);
+      .replace("<ticket>-<slug>", ticketSlug);
   }
 }

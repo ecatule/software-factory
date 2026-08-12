@@ -27,6 +27,7 @@ import {
 import { useGeneratePromptSpec } from "../services/usePromptSpec";
 import { useAgentsList, useTriggerExecution } from "../services/useAgents";
 import { useExecution, pipelineStageLabel } from "../services/useExecutions";
+import { useIncrementsList } from "../services/useIncrements";
 import type { Specification } from "../services/types";
 
 interface OriginBranch {
@@ -400,29 +401,43 @@ function SiblingDocumentsButton({
         Outros documentos
       </button>
       <Modal title="Outros documentos desta demanda" isOpen={isListOpen} onClose={() => setIsListOpen(false)}>
-        {siblings.length === 0 && <p>Nenhum outro documento aprovado ainda.</p>}
-        <ul>
-          {siblings.map((s) => (
-            <li key={s.id}>
-              {s.documentType}{" "}
-              <button
-                type="button"
-                onClick={() => {
-                  setIsListOpen(false);
-                  setViewingSpecId(s.id);
-                }}
-              >
-                Visualizar
-              </button>
-            </li>
-          ))}
-        </ul>
+        <DataTable
+          columns={siblingDocumentColumns((s) => {
+            setIsListOpen(false);
+            setViewingSpecId(s.id);
+          })}
+          data={siblings}
+          emptyMessage="Nenhum outro documento aprovado ainda."
+        />
       </Modal>
       {viewingSpecId && (
         <SiblingDocumentModal specificationId={viewingSpecId} onClose={() => setViewingSpecId(null)} />
       )}
     </>
   );
+}
+
+/** follow-up: "Outros documentos" was a plain text list ("Visualizar" as a text button) — now a grid with an icon-button action, same `.icon-button`/`.icon-actions` convention as `versionColumns`. */
+function siblingDocumentColumns(onView: (specification: Specification) => void): ColumnDef<Specification, unknown>[] {
+  return [
+    { header: "Documento", accessorKey: "documentType" },
+    {
+      header: "Ações",
+      cell: ({ row }) => (
+        <span className="icon-actions">
+          <button
+            type="button"
+            className="icon-button"
+            title="Visualizar"
+            aria-label="Visualizar"
+            onClick={() => onView(row.original)}
+          >
+            👁
+          </button>
+        </span>
+      ),
+    },
+  ];
 }
 
 function SiblingDocumentModal({
@@ -521,22 +536,34 @@ function SystemSelection({ demandId }: { demandId: string }) {
   return (
     <section>
       <h2>Sistemas e Artefatos Envolvidos</h2>
+      <p className="section-hint">
+        Selecione quais Sistemas do Cliente desta demanda estão envolvidos — para cada um marcado, os
+        Artefatos ativos ficam disponíveis para seleção abaixo.
+      </p>
       {!systemsData?.available.length && <p>Nenhum Sistema associado a este Cliente.</p>}
-      <ul>
-        {systemsData?.available.map((system) => (
-          <li key={system.id}>
-            <label>
+      <div className="system-list">
+        {systemsData?.available.map((system) => {
+          const isSelected = selectedSystemIds.includes(system.id);
+          return (
+            <label
+              key={system.id}
+              className={isSelected ? "system-card system-card-selected" : "system-card"}
+            >
               <input
                 type="checkbox"
-                checked={selectedSystemIds.includes(system.id)}
+                checked={isSelected}
                 onChange={() => toggleSystem(system.id)}
                 disabled={!canWrite}
-              />{" "}
-              {system.name}
+              />
+              <span className="system-card-body">
+                <span className="system-card-eyebrow">Sistema</span>
+                <span className="system-card-name">{system.name}</span>
+                {system.description && <span className="system-card-description">{system.description}</span>}
+              </span>
             </label>
-          </li>
-        ))}
-      </ul>
+          );
+        })}
+      </div>
 
       {selectedSystemIds.length > 0 && (
         <>
@@ -814,8 +841,26 @@ function ReviewStep({ demandId }: { demandId: string }) {
   const planDoc = specifications?.find((s) => s.documentType === "PLAN");
   const { data: specVersions } = useSpecificationVersionsList(specDoc?.id ?? "");
   const { data: planVersions } = useSpecificationVersionsList(planDoc?.id ?? "");
-  const specLatest = specVersions?.[specVersions.length - 1];
-  const planLatest = planVersions?.[planVersions.length - 1];
+  // follow-up: a new Incremento (ex. "Novas necessidades") used to visually
+  // "inherit" whatever was last approved in the PREVIOUS incremento — the
+  // review step always showed the latest version overall, with no notion of
+  // incremento boundaries. Now scoped to the demand's current incremento:
+  // no version tagged with that incrementId yet → treated as blank, not
+  // filled with stale content.
+  const { data: increments } = useIncrementsList(demandId);
+  const currentIncrement = increments?.[increments.length - 1];
+  const specLatest = specVersions
+    ?.filter((v) => v.incrementId === currentIncrement?.id)
+    .at(-1);
+  const planLatest = planVersions
+    ?.filter((v) => v.incrementId === currentIncrement?.id)
+    .at(-1);
+  // `baseSpecificationVersionId` only ever references ONE of SPEC/PLAN (see
+  // IncrementsService.createNext) — searched in both unfiltered lists, so
+  // "Ver versão base" only renders on whichever side it actually belongs to.
+  const specBaseVersion = specVersions?.find((v) => v.id === currentIncrement?.baseSpecificationVersionId);
+  const planBaseVersion = planVersions?.find((v) => v.id === currentIncrement?.baseSpecificationVersionId);
+  const [viewingBaseVersion, setViewingBaseVersion] = useState<SpecificationVersion | null>(null);
 
   const { data: agents } = useAgentsList();
   const triggerExecution = useTriggerExecution();
@@ -882,14 +927,21 @@ function ReviewStep({ demandId }: { demandId: string }) {
 
   return (
     <section>
-      <h2>Revisão</h2>
+      <h2>Revisão{currentIncrement && <small> — Incremento {currentIncrement.number}</small>}</h2>
       <div className="review-split">
         <div>
           <h3>SPEC {specLatest && <Badge label={specLatest.status} tone={STATUS_TONE[specLatest.status] ?? "neutral"} />}</h3>
           {specLatest ? (
             <MarkdownEditor value={specLatest.content} onChange={() => {}} readOnly />
           ) : (
-            <p>Nenhuma versão ainda.</p>
+            <>
+              <p>Nenhuma versão registrada ainda neste incremento.</p>
+              {specBaseVersion && (
+                <button type="button" onClick={() => setViewingBaseVersion(specBaseVersion)}>
+                  Ver versão base
+                </button>
+              )}
+            </>
           )}
         </div>
         <div>
@@ -897,10 +949,28 @@ function ReviewStep({ demandId }: { demandId: string }) {
           {planLatest ? (
             <MarkdownEditor value={planLatest.content} onChange={() => {}} readOnly />
           ) : (
-            <p>Nenhuma versão ainda.</p>
+            <>
+              <p>Nenhuma versão registrada ainda neste incremento.</p>
+              {planBaseVersion && (
+                <button type="button" onClick={() => setViewingBaseVersion(planBaseVersion)}>
+                  Ver versão base
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
+
+      {viewingBaseVersion && (
+        <Modal
+          title="Versão base do incremento"
+          isOpen
+          onClose={() => setViewingBaseVersion(null)}
+          className="modal-wide"
+        >
+          <MarkdownEditor value={viewingBaseVersion.content} onChange={() => {}} readOnly />
+        </Modal>
+      )}
 
       {error && <p className="form-error">{error}</p>}
       {message && <p className="form-success">{message}</p>}

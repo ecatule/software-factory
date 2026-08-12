@@ -17,7 +17,8 @@ export const WORKSPACE_ROOT =
 
 const DIACRITICS_PATTERN = new RegExp("[\\u0300-\\u036f]", "g");
 
-function slugify(value: string): string {
+/** follow-up: exported for reuse by DeveloperAgentService.buildBranchName (same normalization/diacritics handling, no need to duplicate). */
+export function slugify(value: string): string {
   return value
     .toLowerCase()
     .normalize("NFD")
