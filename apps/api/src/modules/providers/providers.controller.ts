@@ -6,6 +6,7 @@ import { PrismaService } from "../../common/prisma/prisma.service";
 import { paginate } from "../../common/pagination/paginate";
 import { CreateProviderConfigurationDto } from "./dto/provider-configuration.dto";
 import { assertNoSecretLookingValues } from "./secret-pattern.guard";
+import { resolveAuthProfilesFromEnv } from "./auth-profiles";
 
 /**
  * spec 002 FR-029/FR-030/FR-031: Settings screen backend — 001 registered
@@ -23,6 +24,19 @@ export class ProvidersController {
   @Get()
   list() {
     return this.prisma.db.provider.findMany({ orderBy: { key: "asc" } });
+  }
+
+  /**
+   * follow-up: lists only the profile NAMES configured via
+   * `SDD_AUTH_PROFILE_<KEY>_*` env vars on this server — never the
+   * credential values themselves (`resolveAuthProfilesFromEnv` returns those
+   * too, but only the keys are returned here). Lets the Settings screen
+   * offer a dropdown of real, currently-available profiles instead of a
+   * free-text field the admin has to already know by heart.
+   */
+  @Get("auth-profiles")
+  listAuthProfiles() {
+    return Object.keys(resolveAuthProfilesFromEnv()).sort();
   }
 
   @Get(":id/configurations")

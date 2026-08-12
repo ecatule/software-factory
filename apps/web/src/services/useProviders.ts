@@ -23,6 +23,14 @@ export function useProvidersList() {
   });
 }
 
+/** follow-up: names only (never credential values) of the `SDD_AUTH_PROFILE_<KEY>_*` profiles configured on the server — powers the Settings screen's account-switch dropdown. */
+export function useAuthProfilesList() {
+  return useQuery({
+    queryKey: ["providers", "auth-profiles"],
+    queryFn: () => apiGet<string[]>("/providers/auth-profiles"),
+  });
+}
+
 export function useProviderConfigurations(providerId: string | null) {
   return useQuery({
     queryKey: ["provider", providerId, "configurations"],

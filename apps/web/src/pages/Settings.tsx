@@ -4,6 +4,7 @@ import { DataTable, FormField } from "@software-factory/ui";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   ApiError,
+  useAuthProfilesList,
   useProviderConfigurations,
   useProvidersList,
   useSaveProviderConfiguration,
@@ -37,6 +38,7 @@ export function Settings() {
   const { data: providers, isLoading } = useProvidersList();
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const { data: configurations } = useProviderConfigurations(selectedProviderId);
+  const { data: authProfiles } = useAuthProfilesList();
   const saveConfiguration = useSaveProviderConfiguration();
   const [saveError, setSaveError] = useState<string | null>(null);
   const { register, handleSubmit, reset } = useForm<ConfigFormValues>();
@@ -84,12 +86,19 @@ export function Settings() {
         <section>
           <h2>Configurations</h2>
           <ul>
-            {configurations?.items.map((c) => (
-              <li key={c.id}>
-                {c.projectId ?? "platform-default"} / {c.pipelineStage ?? "any stage"} —{" "}
-                {JSON.stringify(c.settings)}
-              </li>
-            ))}
+            {configurations?.items.map((c) => {
+              const profile =
+                typeof c.settings.authProfileKey === "string" ? c.settings.authProfileKey : null;
+              const model = typeof c.settings.model === "string" ? c.settings.model : null;
+              return (
+                <li key={c.id}>
+                  {c.projectId ?? "platform-default"} / {c.pipelineStage ?? "any stage"}
+                  {profile && <> — Perfil: {profile}</>}
+                  {model && <> — Model: {model}</>}
+                  {!profile && !model && <> — {JSON.stringify(c.settings)}</>}
+                </li>
+              );
+            })}
           </ul>
 
           <form onSubmit={handleSubmit(onSubmit)}>
@@ -97,10 +106,23 @@ export function Settings() {
             <FormField label="Project ID (optional)" registration={register("projectId")} />
             <FormField label="Pipeline stage (optional)" registration={register("pipelineStage")} />
             <FormField label="Model (optional, non-secret)" registration={register("model")} />
-            <FormField
-              label="Auth profile (optional, e.g. default)"
-              registration={register("authProfileKey")}
-            />
+            <div className="form-field">
+              <label htmlFor="authProfileKey">Auth profile (opcional)</label>
+              {/* follow-up: was a free-text field — the admin had to already
+                  know the exact profile name configured on the server's
+                  .env, with no feedback on typos (silently falls back to
+                  the default session). Now a dropdown of the profiles that
+                  actually exist right now (GET /providers/auth-profiles —
+                  names only, never the credential). */}
+              <select id="authProfileKey" {...register("authProfileKey")}>
+                <option value="">(nenhum — sessão padrão do servidor)</option>
+                {authProfiles?.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </div>
             <button type="submit">Save configuration</button>
           </form>
         </section>
