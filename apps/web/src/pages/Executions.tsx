@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { DataTable, Modal, Pagination, Badge } from "@software-factory/ui";
 import type { ColumnDef } from "@tanstack/react-table";
+import { RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/select";
 import { useExecution, useExecutionsList, pipelineStageLabel, type Execution } from "../services/useExecutions";
 
 const STATUS_TONE: Record<Execution["status"], "neutral" | "success" | "warning" | "danger"> = {
@@ -48,24 +51,26 @@ export function Executions() {
   ];
 
   return (
-    <div className="executions-page">
-      <header>
-        <h1>Executions</h1>
-        <select value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">All statuses</option>
-          <option value="QUEUED">QUEUED</option>
-          <option value="RUNNING">RUNNING</option>
-          <option value="COMPLETED">COMPLETED</option>
-          <option value="FAILED">FAILED</option>
-          <option value="CANCELLED">CANCELLED</option>
-        </select>
-        {/* follow-up: replaces the previous auto-polling (2s interval while
-            anything was non-terminal) — reverted after feedback, same
-            reasoning as useDemandPolling: calling the API continuously in
-            the background is unwanted. Refresh is now explicit. */}
-        <button type="button" onClick={refresh} disabled={isLoading}>
-          Atualizar
-        </button>
+    <div className="flex flex-col gap-6">
+      <header className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Executions</h1>
+        <div className="flex items-center gap-2">
+          <NativeSelect value={status} onChange={(e) => setStatus(e.target.value)} className="w-auto">
+            <option value="">All statuses</option>
+            <option value="QUEUED">QUEUED</option>
+            <option value="RUNNING">RUNNING</option>
+            <option value="COMPLETED">COMPLETED</option>
+            <option value="FAILED">FAILED</option>
+            <option value="CANCELLED">CANCELLED</option>
+          </NativeSelect>
+          {/* follow-up: replaces the previous auto-polling (2s interval while
+              anything was non-terminal) — reverted after feedback, same
+              reasoning as useDemandPolling: calling the API continuously in
+              the background is unwanted. Refresh is now explicit. */}
+          <Button type="button" variant="outline" onClick={refresh} disabled={isLoading}>
+            <RefreshCw className={isLoading ? "animate-spin" : undefined} /> Atualizar
+          </Button>
+        </div>
       </header>
 
       <DataTable
@@ -81,27 +86,37 @@ export function Executions() {
 
       <Modal title="Execution detail" isOpen={openExecutionId !== null} onClose={() => setOpenExecutionId(null)}>
         {openExecution.data && (
-          <div>
-            <p>
+          <div className="flex flex-col gap-3">
+            <p className="flex items-center gap-2">
               <Badge label={openExecution.data.status} tone={STATUS_TONE[openExecution.data.status]} />
               {openExecution.data.status === "RUNNING" && pipelineStageLabel(openExecution.data.pipelineStage) && (
-                <span> — {pipelineStageLabel(openExecution.data.pipelineStage)}</span>
+                <span className="text-sm text-muted-foreground">
+                  — {pipelineStageLabel(openExecution.data.pipelineStage)}
+                </span>
               )}
             </p>
-            <p>
+            <p className="text-sm text-muted-foreground">
               Início: {formatDateTime(openExecution.data.startedAt)} · Fim:{" "}
               {formatDateTime(openExecution.data.finishedAt)}
             </p>
             {openExecution.data.status === "RUNNING" && (
-              <button type="button" onClick={() => void openExecution.refetch()}>
-                Atualizar
-              </button>
+              <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => void openExecution.refetch()}>
+                <RefreshCw /> Atualizar
+              </Button>
             )}
-            {openExecution.data.error && <p className="form-error">{openExecution.data.error}</p>}
-            <h3>Input</h3>
-            <pre>{JSON.stringify(openExecution.data.input, null, 2)}</pre>
-            <h3>Output</h3>
-            <pre>{JSON.stringify(openExecution.data.output, null, 2)}</pre>
+            {openExecution.data.error && (
+              <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive">
+                {openExecution.data.error}
+              </p>
+            )}
+            <h3 className="text-sm font-semibold text-foreground">Input</h3>
+            <pre className="overflow-x-auto rounded-md bg-secondary p-3 text-xs text-foreground">
+              {JSON.stringify(openExecution.data.input, null, 2)}
+            </pre>
+            <h3 className="text-sm font-semibold text-foreground">Output</h3>
+            <pre className="overflow-x-auto rounded-md bg-secondary p-3 text-xs text-foreground">
+              {JSON.stringify(openExecution.data.output, null, 2)}
+            </pre>
           </div>
         )}
       </Modal>

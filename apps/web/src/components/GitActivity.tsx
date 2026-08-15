@@ -23,12 +23,12 @@ interface Props {
 
 /** spec User Story 9: branch, commits, PR status visible per demand. */
 export function GitActivity({ activity }: Props) {
-  if (!activity) return <p>No Git activity yet.</p>;
+  if (!activity) return <p className="text-sm text-muted-foreground">No Git activity yet.</p>;
   return (
-    <div className="git-activity">
+    <div className="flex flex-col gap-2 text-sm text-foreground">
       <p>Branches: {activity.branches.map((b) => b.name).join(", ") || "none"}</p>
       <p>Commits: {activity.commits.length}</p>
-      <ul>
+      <ul className="flex flex-col gap-1">
         {activity.pull_requests.map((pr) => (
           <li key={pr.id}>
             PR #{pr.externalReference} — {pr.status}

@@ -6,17 +6,17 @@ export interface DiffViewProps {
 /** Renders the {additions,deletions} shape 001's diff endpoint already computes. */
 export function DiffView({ additions, deletions }: DiffViewProps) {
   return (
-    <div className="diff-view">
-      <div className="diff-view-deletions">
+    <div className="grid grid-cols-2 gap-4 font-mono text-sm">
+      <div className="flex flex-col gap-0.5 rounded-lg border border-border bg-card p-3">
         {deletions.map((line, i) => (
-          <div key={`del-${i}`} className="diff-line diff-line-removed">
+          <div key={`del-${i}`} className="rounded bg-destructive/10 px-2 py-0.5 text-destructive">
             - {line}
           </div>
         ))}
       </div>
-      <div className="diff-view-additions">
+      <div className="flex flex-col gap-0.5 rounded-lg border border-border bg-card p-3">
         {additions.map((line, i) => (
-          <div key={`add-${i}`} className="diff-line diff-line-added">
+          <div key={`add-${i}`} className="rounded bg-success/10 px-2 py-0.5 text-success">
             + {line}
           </div>
         ))}

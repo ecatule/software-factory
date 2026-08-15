@@ -2,6 +2,9 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { DataTable, FormField, Modal } from "@software-factory/ui";
 import type { ColumnDef } from "@tanstack/react-table";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/select";
 import {
   useCreateTechnology,
   useTechnologiesList,
@@ -60,12 +63,12 @@ export function Technologies() {
   }
 
   return (
-    <div className="technologies-page">
-      <header>
-        <h1>Technologies</h1>
-        <button type="button" onClick={openCreate}>
-          New technology
-        </button>
+    <div className="flex flex-col gap-6">
+      <header className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Technologies</h1>
+        <Button type="button" onClick={openCreate}>
+          <Plus /> New technology
+        </Button>
       </header>
 
       <DataTable
@@ -84,19 +87,23 @@ export function Technologies() {
           setEditing(null);
         }}
       >
-        <form onSubmit={handleSubmit(onSubmit)}>
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <FormField label="Name" registration={register("name", { required: true })} />
           <FormField label="Category" registration={register("category", { required: true })} />
           <FormField label="Version" registration={register("techVersion")} />
           <FormField label="Description" type="textarea" registration={register("description")} />
-          <div className="form-field">
-            <label htmlFor="status">Status</label>
-            <select id="status" {...register("status")}>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="status" className="text-sm font-medium text-foreground">
+              Status
+            </label>
+            <NativeSelect id="status" {...register("status")}>
               <option value="ACTIVE">Active</option>
               <option value="INACTIVE">Inactive</option>
-            </select>
+            </NativeSelect>
           </div>
-          <button type="submit">Save</button>
+          <Button type="submit" className="self-start">
+            Save
+          </Button>
         </form>
       </Modal>
     </div>

@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 import { apiPost } from "../services/api";
 import type { Specification } from "../services/types";
 
@@ -28,20 +29,22 @@ export function SpecificationList({ demandId, specifications }: Props) {
   }
 
   return (
-    <ul className="specification-list">
+    <ul className="flex flex-col gap-2">
       {specifications?.map((spec) => (
-        <li key={spec.id}>
+        <li key={spec.id} className="flex items-center gap-2 text-sm text-foreground">
           {spec.documentType} — version {spec.currentVersionId ? "current" : "none"}{" "}
           {/* spec 002 User Story 8 / 003 User Story 1: open the Especificação Assistida workspace. */}
-          <Link to={`/specifications/${spec.id}`}>Open in editor</Link>
+          <Link to={`/specifications/${spec.id}`} className="text-primary hover:underline">
+            Open in editor
+          </Link>
         </li>
       ))}
       {DOCUMENT_TYPES.filter((t) => !existingTypes.has(t)).map((documentType) => (
-        <li key={documentType}>
+        <li key={documentType} className="flex items-center gap-2 text-sm text-foreground">
           {documentType} — not started{" "}
-          <button type="button" onClick={() => start(documentType)}>
+          <Button type="button" variant="outline" size="sm" onClick={() => start(documentType)}>
             Start
-          </button>
+          </Button>
         </li>
       ))}
     </ul>

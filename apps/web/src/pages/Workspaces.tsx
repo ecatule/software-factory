@@ -17,8 +17,8 @@ export function Workspaces() {
   ];
 
   return (
-    <div className="workspaces-page">
-      <h1>Workspaces</h1>
+    <div className="flex flex-col gap-6">
+      <h1 className="text-2xl font-bold tracking-tight text-foreground">Workspaces</h1>
       <DataTable
         columns={columns}
         data={data?.items ?? []}
@@ -30,30 +30,30 @@ export function Workspaces() {
         <Pagination page={data.page} pageSize={data.page_size} total={data.total} onPageChange={setPage} />
       )}
 
-      <Modal
-        title="Workspace tree"
-        isOpen={openWorkspaceId !== null}
-        onClose={() => setOpenWorkspaceId(null)}
-      >
+      <Modal title="Workspace tree" isOpen={openWorkspaceId !== null} onClose={() => setOpenWorkspaceId(null)}>
         {tree ? (
-          <div>
-            <h3>spec/</h3>
-            <ul>
-              {tree.spec.map((f) => (
-                <li key={f}>{f}</li>
-              ))}
-            </ul>
-            <h3>artefatos/</h3>
-            <ul>
-              {tree.artefatos.map((a) => (
-                <li key={a.artifact}>
-                  {a.artifact} ({a.files.length} files)
-                </li>
-              ))}
-            </ul>
+          <div className="flex flex-col gap-4">
+            <div>
+              <h3 className="mb-1.5 text-sm font-semibold text-foreground">spec/</h3>
+              <ul className="flex flex-col gap-1 text-sm text-muted-foreground">
+                {tree.spec.map((f) => (
+                  <li key={f}>{f}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h3 className="mb-1.5 text-sm font-semibold text-foreground">artefatos/</h3>
+              <ul className="flex flex-col gap-1 text-sm text-muted-foreground">
+                {tree.artefatos.map((a) => (
+                  <li key={a.artifact}>
+                    {a.artifact} ({a.files.length} files)
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         ) : (
-          <p>Loading tree…</p>
+          <p className="text-sm text-muted-foreground">Loading tree…</p>
         )}
       </Modal>
     </div>

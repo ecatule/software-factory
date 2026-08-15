@@ -3,6 +3,10 @@ import { useForm } from "react-hook-form";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { DataTable, FormField, Modal, Pagination, Badge } from "@software-factory/ui";
 import type { ColumnDef } from "@tanstack/react-table";
+import { Download, Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/select";
 import { ApiError } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useClientsList } from "../services/useClients";
@@ -130,72 +134,74 @@ export function Demands() {
   }
 
   return (
-    <div className="demands-page">
-      <header>
-        <h1>Demands</h1>
+    <div className="flex flex-col gap-6">
+      <header className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Demands</h1>
         {hasPermission("DEMAND_WRITE") && (
-          <>
-            <button type="button" onClick={openCreate}>
-              New demand
-            </button>
-            <button type="button" onClick={() => setIsImporting(true)}>
-              Importar do Monday
-            </button>
-          </>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" onClick={() => setIsImporting(true)}>
+              <Download /> Importar do Monday
+            </Button>
+            <Button type="button" onClick={openCreate}>
+              <Plus /> New demand
+            </Button>
+          </div>
         )}
       </header>
 
-      <div className="demands-filters">
-        <select value={status} onChange={(e) => setStatus(e.target.value)}>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <NativeSelect value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">All statuses</option>
           <option value="NEW">NEW</option>
           <option value="SPECIFICATION">SPECIFICATION</option>
           <option value="DEVELOPMENT">DEVELOPMENT</option>
           <option value="PULL_REQUEST">PULL_REQUEST</option>
           <option value="FAILED">FAILED</option>
-        </select>
-        <select value={clientId} onChange={(e) => setClientId(e.target.value)}>
+        </NativeSelect>
+        <NativeSelect value={clientId} onChange={(e) => setClientId(e.target.value)}>
           <option value="">All clients</option>
           {clients?.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
             </option>
           ))}
-        </select>
-        <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+        </NativeSelect>
+        <NativeSelect value={projectId} onChange={(e) => setProjectId(e.target.value)}>
           <option value="">All projects</option>
           {projects?.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
             </option>
           ))}
-        </select>
-        <select value={agentId} onChange={(e) => setAgentId(e.target.value)}>
+        </NativeSelect>
+        <NativeSelect value={agentId} onChange={(e) => setAgentId(e.target.value)}>
           <option value="">All agents</option>
           {agents?.map((a) => (
             <option key={a.id} value={a.id}>
               {a.name}
             </option>
           ))}
-        </select>
-        <select value={prStatus} onChange={(e) => setPrStatus(e.target.value)}>
+        </NativeSelect>
+        <NativeSelect value={prStatus} onChange={(e) => setPrStatus(e.target.value)}>
           <option value="">Any PR status</option>
           <option value="OPEN">OPEN</option>
           <option value="MERGED">MERGED</option>
           <option value="CLOSED">CLOSED</option>
-        </select>
-        <input
-          type="date"
-          value={createdAfter}
-          onChange={(e) => setCreatedAfter(e.target.value)}
-          title="Created after"
-        />
-        <input
-          type="date"
-          value={createdBefore}
-          onChange={(e) => setCreatedBefore(e.target.value)}
-          title="Created before"
-        />
+        </NativeSelect>
+        <div className="flex items-center gap-2">
+          <Input
+            type="date"
+            value={createdAfter}
+            onChange={(e) => setCreatedAfter(e.target.value)}
+            title="Created after"
+          />
+          <Input
+            type="date"
+            value={createdBefore}
+            onChange={(e) => setCreatedBefore(e.target.value)}
+            title="Created before"
+          />
+        </div>
       </div>
 
       <DataTable
@@ -215,8 +221,8 @@ export function Demands() {
       )}
 
       <Modal title="New demand" isOpen={isCreating} onClose={() => setIsCreating(false)}>
-        <form onSubmit={handleSubmit(onSubmit)}>
-          {createError && <p className="form-error">{createError}</p>}
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+          {createError && <p className="text-sm font-medium text-destructive">{createError}</p>}
           <FormField label="External ID" registration={register("externalId", { required: true })} />
           <FormField label="Origin" registration={register("origin", { required: true })} />
           <FormField label="Title" registration={register("title", { required: true })} />
@@ -225,76 +231,86 @@ export function Demands() {
             type="textarea"
             registration={register("description", { required: true })}
           />
-          <div className="form-field">
-            <label htmlFor="type">Type</label>
-            <select id="type" {...register("type", { required: true })}>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="type" className="text-sm font-medium text-foreground">
+              Type
+            </label>
+            <NativeSelect id="type" {...register("type", { required: true })}>
               {DEMAND_TYPES.map((t) => (
                 <option key={t} value={t}>
                   {t}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           <FormField label="Priority" registration={register("priority", { required: true })} />
-          <div className="form-field">
-            <label htmlFor="clientId">Client</label>
-            <select id="clientId" {...register("clientId", { required: true })}>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="clientId" className="text-sm font-medium text-foreground">
+              Client
+            </label>
+            <NativeSelect id="clientId" {...register("clientId", { required: true })}>
               <option value="">Select a client…</option>
               {clients?.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
-          <div className="form-field">
-            <label htmlFor="projectId">Project</label>
-            <select id="projectId" {...register("projectId", { required: true })}>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="projectId" className="text-sm font-medium text-foreground">
+              Project
+            </label>
+            <NativeSelect id="projectId" {...register("projectId", { required: true })}>
               <option value="">Select a project…</option>
               {projects?.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
-          <button type="submit">Create</button>
+          <Button type="submit" className="self-start">
+            Create
+          </Button>
         </form>
       </Modal>
 
-      <Modal
-        title="Importar demanda do Monday"
-        isOpen={isImporting}
-        onClose={() => setIsImporting(false)}
-      >
-        <form onSubmit={importForm.handleSubmit(onImport)}>
+      <Modal title="Importar demanda do Monday" isOpen={isImporting} onClose={() => setIsImporting(false)}>
+        <form onSubmit={importForm.handleSubmit(onImport)} className="flex flex-col gap-4">
           <FormField
             label="Monday ticket ID"
             registration={importForm.register("externalId", { required: true })}
           />
-          <div className="form-field">
-            <label htmlFor="importClientId">Client</label>
-            <select id="importClientId" {...importForm.register("clientId", { required: true })}>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="importClientId" className="text-sm font-medium text-foreground">
+              Client
+            </label>
+            <NativeSelect id="importClientId" {...importForm.register("clientId", { required: true })}>
               <option value="">Select a client…</option>
               {clients?.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
-          <div className="form-field">
-            <label htmlFor="importProjectId">Project</label>
-            <select id="importProjectId" {...importForm.register("projectId", { required: true })}>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="importProjectId" className="text-sm font-medium text-foreground">
+              Project
+            </label>
+            <NativeSelect id="importProjectId" {...importForm.register("projectId", { required: true })}>
               <option value="">Select a project…</option>
               {projects?.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
-          <button type="submit">Importar</button>
+          <Button type="submit" className="self-start">
+            Importar
+          </Button>
         </form>
       </Modal>
     </div>

@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { DataTable, FormField, Modal } from "@software-factory/ui";
 import type { ColumnDef } from "@tanstack/react-table";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useClientsList, useCreateClient, useUpdateClient } from "../services/useClients";
 import { useClientSystems, useSetClientSystems, useSystemsList } from "../services/useSystems";
 import type { Client } from "../services/types";
@@ -46,12 +48,12 @@ export function Clients() {
   }
 
   return (
-    <div className="clients-page">
-      <header>
-        <h1>Clients</h1>
-        <button type="button" onClick={openCreate}>
-          New client
-        </button>
+    <div className="flex flex-col gap-6">
+      <header className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Clients</h1>
+        <Button type="button" onClick={openCreate}>
+          <Plus /> New client
+        </Button>
       </header>
 
       <DataTable
@@ -70,13 +72,12 @@ export function Clients() {
           setEditing(null);
         }}
       >
-        <form onSubmit={handleSubmit(onSubmit)}>
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <FormField label="Name" registration={register("name", { required: true })} />
-          <FormField
-            label="External reference"
-            registration={register("externalReference")}
-          />
-          <button type="submit">Save</button>
+          <FormField label="External reference" registration={register("externalReference")} />
+          <Button type="submit" className="self-start">
+            Save
+          </Button>
         </form>
         {editing && <ClientSystems clientId={editing.id} />}
       </Modal>
@@ -104,25 +105,26 @@ function ClientSystems({ clientId }: { clientId: string }) {
   const activeSystems = allSystems?.items.filter((s) => s.stAtivo) ?? [];
 
   return (
-    <section>
-      <h2>Sistemas</h2>
-      <ul>
+    <section className="mt-6 flex flex-col gap-3 border-t border-border pt-4">
+      <h2 className="text-sm font-semibold text-foreground">Sistemas</h2>
+      <ul className="flex flex-col gap-1.5">
         {activeSystems.map((system) => (
           <li key={system.id}>
-            <label>
+            <label className="flex items-center gap-2 text-sm text-foreground">
               <input
                 type="checkbox"
                 checked={selected.includes(system.id)}
                 onChange={() => toggle(system.id)}
-              />{" "}
+                className="size-4 rounded border-input accent-primary"
+              />
               {system.name}
             </label>
           </li>
         ))}
       </ul>
-      <button type="button" onClick={() => setSystems.mutate(selected)}>
+      <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => setSystems.mutate(selected)}>
         Save systems
-      </button>
+      </Button>
     </section>
   );
 }

@@ -1,3 +1,5 @@
+import { PlayCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useDemandTests, useRunDemandTests } from "../../services/useDemandTests";
 
 interface Props {
@@ -10,21 +12,21 @@ export function TestsTab({ demandId }: Props) {
   const runTests = useRunDemandTests(demandId);
 
   return (
-    <div className="cockpit-tab">
-      <h2>Tests</h2>
-      <button type="button" onClick={() => runTests.mutate()} disabled={runTests.isPending}>
-        Run tests
-      </button>
-      {isLoading && <p>Loading tests…</p>}
-      {!isLoading && !tests?.length && <p>No test executions yet.</p>}
+    <div className="flex flex-col gap-3">
+      <h2 className="text-sm font-semibold text-foreground">Tests</h2>
+      <Button type="button" onClick={() => runTests.mutate()} disabled={runTests.isPending} className="self-start">
+        <PlayCircle /> Run tests
+      </Button>
+      {isLoading && <p className="text-sm text-muted-foreground">Loading tests…</p>}
+      {!isLoading && !tests?.length && <p className="text-sm text-muted-foreground">No test executions yet.</p>}
       {!!tests?.length && (
-        <ul className="test-list">
+        <ul className="flex flex-col gap-2">
           {tests.map((t) => (
-            <li key={t.id}>
-              <strong>{t.suite}</strong> — {t.status}
+            <li key={t.id} className="text-sm text-foreground">
+              <strong className="font-semibold">{t.suite}</strong> — {t.status}
               {t.result &&
                 ` (${t.result.passedCount} passed, ${t.result.failedCount} failed, ${t.result.skippedCount} skipped)`}
-              {t.error && <p className="form-error">{t.error}</p>}
+              {t.error && <p className="mt-1 text-sm font-medium text-destructive">{t.error}</p>}
             </li>
           ))}
         </ul>

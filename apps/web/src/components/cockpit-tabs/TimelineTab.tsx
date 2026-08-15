@@ -7,8 +7,8 @@ interface Props {
 
 export function TimelineTab({ entries }: Props) {
   return (
-    <div className="cockpit-tab">
-      <h2>Timeline</h2>
+    <div className="flex flex-col gap-3">
+      <h2 className="text-sm font-semibold text-foreground">Timeline</h2>
       <Timeline entries={entries} />
     </div>
   );

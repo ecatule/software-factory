@@ -7,8 +7,8 @@ interface Props {
 
 export function ArtifactsTab({ artifacts }: Props) {
   return (
-    <div className="cockpit-tab">
-      <h2>Artifacts</h2>
+    <div className="flex flex-col gap-3">
+      <h2 className="text-sm font-semibold text-foreground">Artifacts</h2>
       <ArtifactList artifacts={artifacts} />
     </div>
   );

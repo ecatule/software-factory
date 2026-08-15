@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Modal, MarkdownEditor, DataTable } from "@software-factory/ui";
+import { Eye, Pencil, Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useAuth } from "../../context/AuthContext";
 import { apiGet, apiPost } from "../../services/api";
 import { useCreateIncrement, useIncrementsList, type Increment } from "../../services/useIncrements";
@@ -15,6 +17,9 @@ interface Props {
   demand?: Demand;
   workflow?: WorkflowView;
 }
+
+const textareaClass =
+  "w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 /** feature 004 US5: everything that was at the top of the flat Cockpit page — header, workflow, increments. */
 export function SummaryTab({ demandId, demand, workflow }: Props) {
@@ -50,29 +55,35 @@ export function SummaryTab({ demandId, demand, workflow }: Props) {
   }
 
   return (
-    <div className="cockpit-tab summary-tab">
+    <div className="flex flex-col gap-6">
       <section>
-        <h2>{demand?.title} <small>({demand?.status})</small></h2>
-        {currentIncrement && <small>Incremento {currentIncrement.number}</small>}
+        <h2 className="flex items-center gap-2 text-xl font-bold text-foreground">
+          {demand?.title} <span className="text-base font-normal text-muted-foreground">({demand?.status})</span>
+        </h2>
+        {currentIncrement && (
+          <p className="mt-1 text-sm text-muted-foreground">Incremento {currentIncrement.number}</p>
+        )}
       </section>
 
-      <section>
-        <h2>Workflow</h2>
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm font-semibold text-foreground">Workflow</h2>
         <WorkflowProgress workflow={workflow} />
       </section>
 
-      <section>
-        <h2>Incrementos</h2>
-        {hasPermission("DEMAND_WRITE") && (
-          <button
-            type="button"
-            onClick={() => setIsCreatingIncrement(true)}
-            disabled={!canCreateIncrement}
-            title={canCreateIncrement ? undefined : "O incremento atual precisa estar concluído"}
-          >
-            Criar incremento
-          </button>
-        )}
+      <section className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-foreground">Incrementos</h2>
+          {hasPermission("DEMAND_WRITE") && (
+            <Button
+              type="button"
+              onClick={() => setIsCreatingIncrement(true)}
+              disabled={!canCreateIncrement}
+              title={canCreateIncrement ? undefined : "O incremento atual precisa estar concluído"}
+            >
+              <Plus /> Criar incremento
+            </Button>
+          )}
+        </div>
         <DataTable
           columns={incrementColumns(openIncrement)}
           data={increments ?? []}
@@ -83,14 +94,18 @@ export function SummaryTab({ demandId, demand, workflow }: Props) {
           isOpen={isCreatingIncrement}
           onClose={() => setIsCreatingIncrement(false)}
         >
-          <textarea
-            placeholder="Motivo/alteração identificada"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-          />
-          <button type="button" onClick={submitIncrement} disabled={!reason.trim()}>
-            Criar
-          </button>
+          <div className="flex flex-col gap-4">
+            <textarea
+              placeholder="Motivo/alteração identificada"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={4}
+              className={textareaClass}
+            />
+            <Button type="button" onClick={submitIncrement} disabled={!reason.trim()} className="self-start">
+              Criar
+            </Button>
+          </div>
         </Modal>
       </section>
 
@@ -105,7 +120,7 @@ export function SummaryTab({ demandId, demand, workflow }: Props) {
   );
 }
 
-/** follow-up: the increments list was plain text with a trailing icon button — now a grid, same `.icon-button`/`.icon-actions` convention as the other grids in this app. */
+/** follow-up: the increments list was plain text with a trailing icon button — now a grid with an icon-button action. */
 function incrementColumns(onOpen: (increment: Increment) => void): ColumnDef<Increment, unknown>[] {
   return [
     { header: "Nº", accessorKey: "number" },
@@ -117,16 +132,18 @@ function incrementColumns(onOpen: (increment: Increment) => void): ColumnDef<Inc
         const inc = row.original;
         const completed = inc.status === "COMPLETED";
         return (
-          <span className="icon-actions">
-            <button
+          <span className="flex items-center gap-1">
+            <Button
               type="button"
-              className="icon-button"
+              variant="ghost"
+              size="icon"
+              className="size-8"
               title={completed ? "Ver detalhes" : "Abrir no wizard"}
               aria-label={completed ? "Ver detalhes" : "Abrir no wizard"}
               onClick={() => onOpen(inc)}
             >
-              {completed ? "👁" : "✎"}
-            </button>
+              {completed ? <Eye className="size-4" /> : <Pencil className="size-4" />}
+            </Button>
           </span>
         );
       },
@@ -164,10 +181,14 @@ function IncrementSnapshotModal({
       onClose={onClose}
       className="modal-wide"
     >
-      {!specifications?.length && <p>Nenhum documento gerado ainda para esta demanda.</p>}
-      {specifications?.map((spec) => (
-        <IncrementDocumentSnapshot key={spec.id} specification={spec} incrementId={increment.id} />
-      ))}
+      <div className="flex flex-col gap-4">
+        {!specifications?.length && (
+          <p className="text-sm text-muted-foreground">Nenhum documento gerado ainda para esta demanda.</p>
+        )}
+        {specifications?.map((spec) => (
+          <IncrementDocumentSnapshot key={spec.id} specification={spec} incrementId={increment.id} />
+        ))}
+      </div>
     </Modal>
   );
 }
@@ -183,12 +204,12 @@ function IncrementDocumentSnapshot({
   const versionForIncrement = versions?.filter((v) => v.incrementId === incrementId).at(-1);
 
   return (
-    <section>
-      <h3>{specification.documentType}</h3>
+    <section className="flex flex-col gap-2">
+      <h3 className="text-sm font-semibold text-foreground">{specification.documentType}</h3>
       {versionForIncrement ? (
         <MarkdownEditor value={versionForIncrement.content} onChange={() => {}} readOnly />
       ) : (
-        <p>Não gerado neste incremento.</p>
+        <p className="text-sm text-muted-foreground">Não gerado neste incremento.</p>
       )}
     </section>
   );

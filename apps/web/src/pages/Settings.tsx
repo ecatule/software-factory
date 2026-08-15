@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { DataTable, FormField } from "@software-factory/ui";
 import type { ColumnDef } from "@tanstack/react-table";
+import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/select";
 import {
   ApiError,
   useAuthProfilesList,
@@ -72,20 +74,15 @@ export function Settings() {
   }
 
   return (
-    <div className="settings-page">
-      <h1>Settings — Providers</h1>
+    <div className="flex flex-col gap-8">
+      <h1 className="text-2xl font-bold tracking-tight text-foreground">Settings — Providers</h1>
 
-      <DataTable
-        columns={columns}
-        data={providers ?? []}
-        isLoading={isLoading}
-        onRowClick={(p) => setSelectedProviderId(p.id)}
-      />
+      <DataTable columns={columns} data={providers ?? []} isLoading={isLoading} onRowClick={(p) => setSelectedProviderId(p.id)} />
 
       {selectedProviderId && (
-        <section>
-          <h2>Configurations</h2>
-          <ul>
+        <section className="flex flex-col gap-4 rounded-lg border border-border bg-card p-5">
+          <h2 className="text-sm font-semibold text-foreground">Configurations</h2>
+          <ul className="flex flex-col gap-1.5 text-sm text-foreground">
             {configurations?.items.map((c) => {
               const profile =
                 typeof c.settings.authProfileKey === "string" ? c.settings.authProfileKey : null;
@@ -101,29 +98,33 @@ export function Settings() {
             })}
           </ul>
 
-          <form onSubmit={handleSubmit(onSubmit)}>
-            {saveError && <p className="form-error">{saveError}</p>}
+          <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+            {saveError && <p className="text-sm font-medium text-destructive">{saveError}</p>}
             <FormField label="Project ID (optional)" registration={register("projectId")} />
             <FormField label="Pipeline stage (optional)" registration={register("pipelineStage")} />
             <FormField label="Model (optional, non-secret)" registration={register("model")} />
-            <div className="form-field">
-              <label htmlFor="authProfileKey">Auth profile (opcional)</label>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="authProfileKey" className="text-sm font-medium text-foreground">
+                Auth profile (opcional)
+              </label>
               {/* follow-up: was a free-text field — the admin had to already
                   know the exact profile name configured on the server's
                   .env, with no feedback on typos (silently falls back to
                   the default session). Now a dropdown of the profiles that
                   actually exist right now (GET /providers/auth-profiles —
                   names only, never the credential). */}
-              <select id="authProfileKey" {...register("authProfileKey")}>
+              <NativeSelect id="authProfileKey" {...register("authProfileKey")}>
                 <option value="">(nenhum — sessão padrão do servidor)</option>
                 {authProfiles?.map((name) => (
                   <option key={name} value={name}>
                     {name}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
-            <button type="submit">Save configuration</button>
+            <Button type="submit" className="self-start">
+              Save configuration
+            </Button>
           </form>
         </section>
       )}
@@ -158,33 +159,30 @@ function RolePermissions() {
   ];
 
   return (
-    <section>
-      <h2>Roles &amp; Permissions</h2>
-      <DataTable
-        columns={roleColumns}
-        data={roles ?? []}
-        onRowClick={(role) => setSelectedRoleId(role.id)}
-      />
+    <section className="flex flex-col gap-4">
+      <h2 className="text-sm font-semibold text-foreground">Roles &amp; Permissions</h2>
+      <DataTable columns={roleColumns} data={roles ?? []} onRowClick={(role) => setSelectedRoleId(role.id)} />
 
       {selectedRoleId && (
-        <div>
-          <ul>
+        <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-5">
+          <ul className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
             {allPermissions?.map((permission) => (
               <li key={permission.id}>
-                <label>
+                <label className="flex items-center gap-2 text-sm text-foreground">
                   <input
                     type="checkbox"
                     checked={selected.includes(permission.name)}
                     onChange={() => toggle(permission.name)}
-                  />{" "}
+                    className="size-4 rounded border-input accent-primary"
+                  />
                   {permission.name}
                 </label>
               </li>
             ))}
           </ul>
-          <button type="button" onClick={() => setPermissions.mutate(selected)}>
+          <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => setPermissions.mutate(selected)}>
             Save permissions
-          </button>
+          </Button>
         </div>
       )}
     </section>

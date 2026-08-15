@@ -1,4 +1,7 @@
 import { NavLink, Navigate, useParams } from "react-router-dom";
+import { RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { useDemandPolling } from "../services/useDemandPolling";
 import { SummaryTab } from "../components/cockpit-tabs/SummaryTab";
 import { SpecificationTab } from "../components/cockpit-tabs/SpecificationTab";
@@ -34,24 +37,40 @@ export function DemandCockpit() {
   const { demand, workflow, workspace, artifacts, specifications, timeline, gitActivity, refetchAll } =
     useDemandPolling(demandId ?? "");
 
-  if (!demandId) return <p>No demand selected.</p>;
-  if (demand.isLoading) return <p>Loading demand…</p>;
-  if (demand.isError) return <p>Failed to load demand.</p>;
+  if (!demandId) return <p className="text-sm text-muted-foreground">No demand selected.</p>;
+  if (demand.isLoading) return <p className="text-sm text-muted-foreground">Loading demand…</p>;
+  if (demand.isError) return <p className="text-sm text-destructive">Failed to load demand.</p>;
 
   if (!tab) return <Navigate to={`/demands/${demandId}/summary`} replace />;
 
   const activeTab = TABS.some((t) => t.key === tab) ? tab : "summary";
 
   return (
-    <div className="demand-cockpit">
-      <h1>
-        {demand.data?.title} <small>({demand.data?.status})</small>
-        <button type="button" onClick={refetchAll}>Atualizar</button>
-      </h1>
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-foreground">
+          {demand.data?.title}
+          <span className="text-base font-normal text-muted-foreground">({demand.data?.status})</span>
+        </h1>
+        <Button type="button" variant="outline" onClick={refetchAll}>
+          <RefreshCw /> Atualizar
+        </Button>
+      </div>
 
-      <nav className="cockpit-tabs-nav">
+      <nav className="flex flex-wrap gap-2 border-b border-border pb-4">
         {TABS.map((t) => (
-          <NavLink key={t.key} to={`/demands/${demandId}/${t.key}`}>
+          <NavLink
+            key={t.key}
+            to={`/demands/${demandId}/${t.key}`}
+            className={({ isActive }) =>
+              cn(
+                "rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors",
+                isActive
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-card text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+              )
+            }
+          >
             {t.label}
           </NavLink>
         ))}

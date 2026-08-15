@@ -3,6 +3,8 @@ import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import { DataTable, FormField, Modal, Badge } from "@software-factory/ui";
 import type { ColumnDef } from "@tanstack/react-table";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useAuth } from "../context/AuthContext";
 import { useCreateSystem, useSystemsList, type System } from "../services/useSystems";
 
@@ -28,7 +30,12 @@ export function Systems() {
   const columns: ColumnDef<System, unknown>[] = [
     { header: "Name", accessorKey: "name" },
     { header: "Description", accessorKey: "description" },
-    { header: "Status", cell: ({ row }) => <Badge label={row.original.stAtivo ? "ACTIVE" : "INACTIVE"} /> },
+    {
+      header: "Status",
+      cell: ({ row }) => (
+        <Badge label={row.original.stAtivo ? "ACTIVE" : "INACTIVE"} tone={row.original.stAtivo ? "success" : "neutral"} />
+      ),
+    },
   ];
 
   function openCreate() {
@@ -43,13 +50,13 @@ export function Systems() {
   }
 
   return (
-    <div className="systems-page">
-      <header>
-        <h1>Sistemas</h1>
+    <div className="flex flex-col gap-6">
+      <header className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Sistemas</h1>
         {hasPermission("SYSTEM_WRITE") && (
-          <button type="button" onClick={openCreate}>
-            New system
-          </button>
+          <Button type="button" onClick={openCreate}>
+            <Plus /> New system
+          </Button>
         )}
       </header>
 
@@ -62,10 +69,12 @@ export function Systems() {
       />
 
       <Modal title="New system" isOpen={isCreating} onClose={() => setIsCreating(false)}>
-        <form onSubmit={handleSubmit(onSubmit)}>
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <FormField label="Name" registration={register("name", { required: true })} />
           <FormField label="Description" type="textarea" registration={register("description")} />
-          <button type="submit">Create</button>
+          <Button type="submit" className="self-start">
+            Create
+          </Button>
         </form>
       </Modal>
     </div>

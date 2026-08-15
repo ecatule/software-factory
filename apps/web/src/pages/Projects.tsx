@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { DataTable, FormField, Modal } from "@software-factory/ui";
 import type { ColumnDef } from "@tanstack/react-table";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/select";
 import { ApiError } from "../services/api";
 import { useClientsList } from "../services/useClients";
 import { useCreateProject, useProjectsList, useUpdateProject } from "../services/useProjects";
@@ -25,6 +28,9 @@ function splitSuites(value: string): string[] {
     .map((s) => s.trim())
     .filter(Boolean);
 }
+
+const textareaClass =
+  "w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 /** spec User Story 4: list (filterable by client), create, and edit Projects. */
 export function Projects() {
@@ -106,20 +112,22 @@ export function Projects() {
   }
 
   return (
-    <div className="projects-page">
-      <header>
-        <h1>Projects</h1>
-        <select value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}>
-          <option value="">All clients</option>
-          {clients?.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-        <button type="button" onClick={openCreate}>
-          New project
-        </button>
+    <div className="flex flex-col gap-6">
+      <header className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Projects</h1>
+        <div className="flex items-center gap-2">
+          <NativeSelect value={clientFilter} onChange={(e) => setClientFilter(e.target.value)} className="w-auto">
+            <option value="">All clients</option>
+            {clients?.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </NativeSelect>
+          <Button type="button" onClick={openCreate}>
+            <Plus /> New project
+          </Button>
+        </div>
       </header>
 
       <DataTable
@@ -139,19 +147,21 @@ export function Projects() {
         }}
         className={editing ? "modal-wide" : undefined}
       >
-        <form onSubmit={handleSubmit(onSubmit)}>
-          {saveError && <p className="form-error">{saveError}</p>}
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+          {saveError && <p className="text-sm font-medium text-destructive">{saveError}</p>}
           {!editing && (
-            <div className="form-field">
-              <label htmlFor="clientId">Client</label>
-              <select id="clientId" {...register("clientId", { required: true })}>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="clientId" className="text-sm font-medium text-foreground">
+                Client
+              </label>
+              <NativeSelect id="clientId" {...register("clientId", { required: true })}>
                 <option value="">Select a client…</option>
                 {clients?.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
           )}
           <FormField label="Name" registration={register("name", { required: true })} />
@@ -160,15 +170,17 @@ export function Projects() {
             registration={register("requiredTestSuites")}
           />
           {editing && (
-            <div className="form-field">
-              <label htmlFor="constitution">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="constitution" className="text-sm font-medium text-foreground">
                 Constitution (aplicada em <code>.specify/memory/constitution.md</code> de toda
                 demanda deste projeto antes de rodar specify/plan/tasks/implement)
               </label>
-              <textarea id="constitution" rows={16} {...register("constitution")} />
+              <textarea id="constitution" rows={16} className={textareaClass} {...register("constitution")} />
             </div>
           )}
-          <button type="submit">Save</button>
+          <Button type="submit" className="self-start">
+            Save
+          </Button>
         </form>
         {editing && (
           <ProjectTechnologies projectId={editing.id} onSaved={() => setEditing(null)} />
@@ -196,28 +208,32 @@ function ProjectTechnologies({ projectId, onSaved }: { projectId: string; onSave
   }
 
   return (
-    <section>
-      <h2>Technologies</h2>
-      <ul>
+    <section className="mt-6 flex flex-col gap-3 border-t border-border pt-4">
+      <h2 className="text-sm font-semibold text-foreground">Technologies</h2>
+      <ul className="flex flex-col gap-1.5">
         {allTechnologies?.items.map((tech) => (
           <li key={tech.id}>
-            <label>
+            <label className="flex items-center gap-2 text-sm text-foreground">
               <input
                 type="checkbox"
                 checked={selected.includes(tech.id)}
                 onChange={() => toggle(tech.id)}
-              />{" "}
+                className="size-4 rounded border-input accent-primary"
+              />
               {tech.name}
             </label>
           </li>
         ))}
       </ul>
-      <button
+      <Button
         type="button"
+        variant="outline"
+        size="sm"
+        className="self-start"
         onClick={() => setTechnologies.mutate(selected, { onSuccess: onSaved })}
       >
         Save technologies
-      </button>
+      </Button>
     </section>
   );
 }

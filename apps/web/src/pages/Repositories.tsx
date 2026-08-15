@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { DataTable, FormField, Modal, Pagination, Badge } from "@software-factory/ui";
 import type { ColumnDef } from "@tanstack/react-table";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { ApiError } from "../services/api";
 import {
   useCreateRepository,
@@ -19,6 +21,9 @@ function extractErrorMessage(error: unknown, fallback: string): string {
   }
   return fallback;
 }
+
+const selectClass =
+  "w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 interface RepositoryFormValues {
   projectId: string;
@@ -62,7 +67,9 @@ export function Repositories() {
     { header: "Homologation branch", accessorKey: "homologationBranch" },
     {
       header: "Status",
-      cell: ({ row }) => <Badge label={row.original.stAtivo ? "ACTIVE" : "INACTIVE"} />,
+      cell: ({ row }) => (
+        <Badge label={row.original.stAtivo ? "ACTIVE" : "INACTIVE"} tone={row.original.stAtivo ? "success" : "neutral"} />
+      ),
     },
   ];
 
@@ -124,12 +131,12 @@ export function Repositories() {
   }
 
   return (
-    <div className="repositories-page">
-      <header>
-        <h1>Repositories</h1>
-        <button type="button" onClick={openCreate}>
-          New repository
-        </button>
+    <div className="flex flex-col gap-6">
+      <header className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Repositories</h1>
+        <Button type="button" onClick={openCreate}>
+          <Plus /> New repository
+        </Button>
       </header>
       <DataTable
         columns={columns}
@@ -143,11 +150,17 @@ export function Repositories() {
       )}
 
       <Modal title="New repository" isOpen={isCreating} onClose={() => setIsCreating(false)}>
-        <form onSubmit={createForm.handleSubmit(onCreateSubmit)}>
-          {createError && <p className="form-error">{createError}</p>}
-          <div className="form-field">
-            <label htmlFor="repo-projectId">Project</label>
-            <select id="repo-projectId" {...createForm.register("projectId", { required: true })}>
+        <form onSubmit={createForm.handleSubmit(onCreateSubmit)} className="flex flex-col gap-4">
+          {createError && <p className="text-sm font-medium text-destructive">{createError}</p>}
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="repo-projectId" className="text-sm font-medium text-foreground">
+              Project
+            </label>
+            <select
+              id="repo-projectId"
+              className={selectClass}
+              {...createForm.register("projectId", { required: true })}
+            >
               <option value="">Select a project…</option>
               {projects?.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -160,17 +173,11 @@ export function Repositories() {
             label="Base (e.g. https://github.com/owner)"
             registration={createForm.register("externalReference", { required: true })}
           />
-          <FormField
-            label="Production branch"
-            registration={createForm.register("productionBranch")}
-          />
-          <FormField
-            label="Homologation branch"
-            registration={createForm.register("homologationBranch")}
-          />
-          <button type="submit" disabled={createRepository.isPending}>
+          <FormField label="Production branch" registration={createForm.register("productionBranch")} />
+          <FormField label="Homologation branch" registration={createForm.register("homologationBranch")} />
+          <Button type="submit" disabled={createRepository.isPending} className="self-start">
             Create
-          </button>
+          </Button>
         </form>
       </Modal>
 
@@ -179,11 +186,13 @@ export function Repositories() {
         isOpen={editing !== null}
         onClose={() => setEditing(null)}
       >
-        <form onSubmit={handleSubmit(onSubmit)}>
-          {editError && <p className="form-error">{editError}</p>}
-          <div className="form-field">
-            <label htmlFor="edit-repo-projectId">Project</label>
-            <select id="edit-repo-projectId" {...register("projectId", { required: true })}>
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+          {editError && <p className="text-sm font-medium text-destructive">{editError}</p>}
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="edit-repo-projectId" className="text-sm font-medium text-foreground">
+              Project
+            </label>
+            <select id="edit-repo-projectId" className={selectClass} {...register("projectId", { required: true })}>
               {projects?.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -197,26 +206,30 @@ export function Repositories() {
           />
           <FormField label="Production branch" registration={register("productionBranch")} />
           <FormField label="Homologation branch" registration={register("homologationBranch")} />
-          <button type="submit">Save</button>
+          <Button type="submit" className="self-start">
+            Save
+          </Button>
         </form>
         {editing && (
-          <>
-            <button type="button" onClick={() => setShowingArtifactsFor(editing.id)}>
+          <div className="mt-4 flex gap-2 border-t border-border pt-4">
+            <Button type="button" variant="outline" size="sm" onClick={() => setShowingArtifactsFor(editing.id)}>
               View linked artifacts
-            </button>
-            <button type="button" onClick={() => toggleActive(editing)} disabled={updateRepository.isPending}>
+            </Button>
+            <Button
+              type="button"
+              variant={editing.stAtivo ? "destructive" : "outline"}
+              size="sm"
+              onClick={() => toggleActive(editing)}
+              disabled={updateRepository.isPending}
+            >
               {editing.stAtivo ? "Deactivate" : "Activate"}
-            </button>
-          </>
+            </Button>
+          </div>
         )}
       </Modal>
 
-      <Modal
-        title="Linked artifacts"
-        isOpen={showingArtifactsFor !== null}
-        onClose={() => setShowingArtifactsFor(null)}
-      >
-        <ul>
+      <Modal title="Linked artifacts" isOpen={showingArtifactsFor !== null} onClose={() => setShowingArtifactsFor(null)}>
+        <ul className="flex flex-col gap-1.5 text-sm text-foreground">
           {artifacts?.map((a) => (
             <li key={a.id}>
               {a.name} ({a.type})

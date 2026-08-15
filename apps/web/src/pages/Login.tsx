@@ -1,4 +1,6 @@
 import { useSearchParams } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/Logo";
 import { useAuth } from "../context/AuthContext";
 
 /** spec User Story 1: the only unauthenticated screen — triggers the OIDC redirect. */
@@ -8,12 +10,12 @@ export function Login() {
   const redirect = searchParams.get("redirect") ?? "/";
 
   return (
-    <div className="login-page">
-      <h1>AI Software Factory</h1>
-      <p>Sign in with your organizational identity to continue.</p>
-      <button type="button" onClick={() => login(redirect)}>
+    <div className="flex h-full min-h-screen flex-col items-center justify-center gap-4 bg-background text-center">
+      <Logo variant="full" height={36} />
+      <p className="text-muted-foreground">Sign in with your organizational identity to continue.</p>
+      <Button type="button" size="lg" onClick={() => login(redirect)}>
         Sign in
-      </button>
+      </Button>
     </div>
   );
 }

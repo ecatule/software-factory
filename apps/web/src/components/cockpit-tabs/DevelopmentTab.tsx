@@ -8,8 +8,8 @@ interface Props {
 /** feature 004 US5: the demand's workspace — where the Developer Agent checks out and works. */
 export function DevelopmentTab({ workspace }: Props) {
   return (
-    <div className="cockpit-tab">
-      <h2>Development</h2>
+    <div className="flex flex-col gap-3">
+      <h2 className="text-sm font-semibold text-foreground">Development</h2>
       <WorkspaceTree workspace={workspace} />
     </div>
   );

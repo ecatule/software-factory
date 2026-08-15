@@ -6,11 +6,11 @@ interface Props {
 
 /** spec User Story 5: shows the demand's workspace structure. */
 export function WorkspaceTree({ workspace }: Props) {
-  if (!workspace) return <p>No workspace created yet.</p>;
+  if (!workspace) return <p className="text-sm text-muted-foreground">No workspace created yet.</p>;
   return (
-    <div className="workspace-tree">
-      <p>{workspace.path}</p>
-      <p>Status: {workspace.status}</p>
+    <div className="flex flex-col gap-1 rounded-lg border border-border bg-card p-3 text-sm text-foreground">
+      <p className="font-mono">{workspace.path}</p>
+      <p className="text-muted-foreground">Status: {workspace.status}</p>
     </div>
   );
 }

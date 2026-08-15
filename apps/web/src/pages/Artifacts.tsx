@@ -2,6 +2,9 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { DataTable, FormField, Modal, Pagination, Badge } from "@software-factory/ui";
 import type { ColumnDef } from "@tanstack/react-table";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/select";
 import { useAuth } from "../context/AuthContext";
 import {
   useArtifactFiles,
@@ -49,13 +52,13 @@ export function Artifacts() {
   }
 
   return (
-    <div className="artifacts-page">
-      <header>
-        <h1>Artifacts</h1>
+    <div className="flex flex-col gap-6">
+      <header className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Artifacts</h1>
         {hasPermission("DEMAND_WRITE") && (
-          <button type="button" onClick={openCreate}>
-            New artifact
-          </button>
+          <Button type="button" onClick={openCreate}>
+            <Plus /> New artifact
+          </Button>
         )}
       </header>
       <DataTable
@@ -70,7 +73,7 @@ export function Artifacts() {
       )}
 
       <Modal title="Artifact files" isOpen={openArtifactId !== null} onClose={() => setOpenArtifactId(null)}>
-        <ul>
+        <ul className="flex flex-col gap-1.5 text-sm text-foreground">
           {files?.map((f) => (
             <li key={f.id}>
               {f.filePath} — {f.changeType}
@@ -81,34 +84,40 @@ export function Artifacts() {
       </Modal>
 
       <Modal title="New artifact" isOpen={isCreating} onClose={() => setIsCreating(false)}>
-        <form onSubmit={handleSubmit(onSubmit)}>
-          <div className="form-field">
-            <label htmlFor="artifactDemandId">Demand</label>
-            <select id="artifactDemandId" {...register("demandId", { required: true })}>
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="artifactDemandId" className="text-sm font-medium text-foreground">
+              Demand
+            </label>
+            <NativeSelect id="artifactDemandId" {...register("demandId", { required: true })}>
               <option value="">Select a demand…</option>
               {demands?.items.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.externalId} — {d.title}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           <FormField label="Name" registration={register("name", { required: true })} />
           <FormField label="Type" registration={register("type", { required: true })} />
           <FormField label="Description" type="textarea" registration={register("description")} />
           <FormField label="Technology" registration={register("technology")} />
           <FormField label="Path" registration={register("path")} />
-          <div className="form-field">
-            <label htmlFor="artifactRepositoryIds">Repositories</label>
-            <select id="artifactRepositoryIds" multiple {...register("repositoryIds")}>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="artifactRepositoryIds" className="text-sm font-medium text-foreground">
+              Repositories
+            </label>
+            <NativeSelect id="artifactRepositoryIds" multiple className="h-auto" {...register("repositoryIds")}>
               {repositories?.items.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.externalReference}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
-          <button type="submit">Create</button>
+          <Button type="submit" className="self-start">
+            Create
+          </Button>
         </form>
       </Modal>
     </div>

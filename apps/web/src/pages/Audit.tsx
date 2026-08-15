@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { DataTable, Pagination } from "@software-factory/ui";
 import type { ColumnDef } from "@tanstack/react-table";
+import { Input } from "@/components/ui/input";
 import { useAuditList, type AuditLogEntry } from "../services/useAudit";
 
 /** spec User Story 14: search the audit log. */
@@ -17,13 +18,14 @@ export function Audit() {
   ];
 
   return (
-    <div className="audit-page">
-      <header>
-        <h1>Audit</h1>
-        <input
+    <div className="flex flex-col gap-6">
+      <header className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Audit</h1>
+        <Input
           placeholder="Filter by entity type (e.g. demands)"
           value={entityType}
           onChange={(e) => setEntityType(e.target.value)}
+          className="max-w-xs"
         />
       </header>
 

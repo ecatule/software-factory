@@ -3,6 +3,10 @@ import { useParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { DataTable, FormField, Modal, Pagination, Badge } from "@software-factory/ui";
 import type { ColumnDef } from "@tanstack/react-table";
+import { Pause, Pencil, Play, Plus, Search, Upload } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/select";
 import { ApiError } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -63,29 +67,34 @@ export function SystemDetail() {
     await updateSystem.mutateAsync({ id: systemId, name: system.name, stAtivo: !system.stAtivo });
   }
 
-  if (isLoading) return <p>Loading…</p>;
-  if (!system || !systemId) return <p>System not found.</p>;
+  if (isLoading) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (!system || !systemId) return <p className="text-sm text-muted-foreground">System not found.</p>;
 
   return (
-    <div className="system-detail-page">
-      <header>
-        <h1>
-          {system.name} <Badge label={system.stAtivo ? "ACTIVE" : "INACTIVE"} />
+    <div className="flex flex-col gap-8">
+      <header className="flex items-center justify-between">
+        <h1 className="flex items-center gap-2.5 text-2xl font-bold tracking-tight text-foreground">
+          {system.name}
+          <Badge label={system.stAtivo ? "ACTIVE" : "INACTIVE"} tone={system.stAtivo ? "success" : "neutral"} />
         </h1>
         {canWrite && (
-          <button type="button" onClick={toggleActive}>
+          <Button type="button" variant={system.stAtivo ? "destructive" : "outline"} onClick={toggleActive}>
             {system.stAtivo ? "Deactivate system" : "Activate system"}
-          </button>
+          </Button>
         )}
       </header>
 
-      <section>
-        <form onSubmit={handleSubmit(onSubmit)}>
+      <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-5">
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <FormField label="Name" registration={register("name", { required: true })} />
           <FormField label="Description" type="textarea" registration={register("description")} />
-          {canWrite && <button type="submit">Save</button>}
+          {canWrite && (
+            <Button type="submit" className="self-start">
+              Save
+            </Button>
+          )}
         </form>
-        {saveMessage && <p className="form-success">{saveMessage}</p>}
+        {saveMessage && <p className="text-sm font-medium text-success">{saveMessage}</p>}
       </section>
 
       <SystemArtifacts systemId={systemId} />
@@ -182,57 +191,70 @@ function SystemArtifacts({ systemId }: { systemId: string }) {
     { header: "Name", accessorKey: "name" },
     { header: "Type", accessorKey: "type" },
     { header: "Technology", accessorKey: "technology" },
-    { header: "Status", cell: ({ row }) => <Badge label={row.original.stAtivo ? "ACTIVE" : "INACTIVE"} /> },
+    {
+      header: "Status",
+      cell: ({ row }) => (
+        <Badge label={row.original.stAtivo ? "ACTIVE" : "INACTIVE"} tone={row.original.stAtivo ? "success" : "neutral"} />
+      ),
+    },
     {
       header: "Actions",
       cell: ({ row }) =>
         canWrite && (
-          <span className="icon-actions">
-            <button
+          <span className="flex items-center gap-1">
+            <Button
               type="button"
-              className="icon-button"
+              variant="ghost"
+              size="icon"
+              className="size-8"
               title="Edit"
               aria-label="Edit"
               onClick={() => openEdit(row.original)}
             >
-              ✎
-            </button>
-            <button
+              <Pencil className="size-4" />
+            </Button>
+            <Button
               type="button"
-              className="icon-button"
+              variant="ghost"
+              size="icon"
+              className="size-8"
               title={row.original.stAtivo ? "Deactivate" : "Activate"}
               aria-label={row.original.stAtivo ? "Deactivate" : "Activate"}
               disabled={updateArtifact.isPending}
               onClick={() => toggleActive(row.original)}
             >
-              {row.original.stAtivo ? "⏸" : "▶"}
-            </button>
+              {row.original.stAtivo ? <Pause className="size-4" /> : <Play className="size-4" />}
+            </Button>
           </span>
         ),
     },
   ];
 
   return (
-    <section>
-      <h2>Artefatos</h2>
-      <div className="systems-artifacts-toolbar">
-        <input
-          type="search"
-          placeholder="Search by name…"
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(1);
-          }}
-        />
+    <section className="flex flex-col gap-4">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Artefatos</h2>
+      <div className="flex items-center justify-between gap-3">
+        <div className="relative max-w-sm flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            placeholder="Search by name…"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+            className="pl-8"
+          />
+        </div>
         {canWrite && (
-          <button type="button" onClick={openCreate}>
-            New artifact
-          </button>
+          <Button type="button" onClick={openCreate}>
+            <Plus /> New artifact
+          </Button>
         )}
       </div>
-      {toggleError && <p className="form-error">{toggleError}</p>}
-      {toggleMessage && <p className="form-success">{toggleMessage}</p>}
+      {toggleError && <p className="text-sm font-medium text-destructive">{toggleError}</p>}
+      {toggleMessage && <p className="text-sm font-medium text-success">{toggleMessage}</p>}
 
       <DataTable
         columns={columns}
@@ -252,34 +274,40 @@ function SystemArtifacts({ systemId }: { systemId: string }) {
           setEditingArtifact(null);
         }}
       >
-        <form onSubmit={handleSubmit(onSubmit)}>
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <FormField label="Name" registration={register("name", { required: true })} />
-          <div className="form-field">
-            <label htmlFor="artifactType">Type</label>
-            <select id="artifactType" {...register("type", { required: true })}>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="artifactType" className="text-sm font-medium text-foreground">
+              Type
+            </label>
+            <NativeSelect id="artifactType" {...register("type", { required: true })}>
               {ARTIFACT_TYPES.map((t) => (
                 <option key={t} value={t}>
                   {t}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           <FormField label="Technology" registration={register("technology")} />
           <FormField label="Description" type="textarea" registration={register("description")} />
-          <div className="form-field">
-            <label htmlFor="artifactRepositoryIds">Repositórios</label>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="artifactRepositoryIds" className="text-sm font-medium text-foreground">
+              Repositórios
+            </label>
             {/* follow-up: links this catalog artifact to real Repository row(s) —
                 without this, selecting the artifact in a demand's wizard has
                 nothing for the Developer Agent to clone/branch/commit. */}
-            <select id="artifactRepositoryIds" multiple {...register("repositoryIds")}>
+            <NativeSelect id="artifactRepositoryIds" multiple className="h-auto" {...register("repositoryIds")}>
               {activeRepositories.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.externalReference}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
-          <button type="submit">Save artifact</button>
+          <Button type="submit" className="self-start">
+            Save artifact
+          </Button>
         </form>
       </Modal>
 
@@ -352,18 +380,24 @@ function BulkArtifactUpload({ systemId }: { systemId: string }) {
   const errorRows = results?.filter((r) => r.status === "error") ?? [];
 
   return (
-    <section>
-      <h3>Upload em lote (CSV)</h3>
-      <p>
-        Arquivo com cabeçalho <code>name,type,technology,description</code> (ou
-        <code>nome,tipo,tecnologia,descricao</code>), separado por vírgula ou ponto-e-vírgula —
-        uma linha por Artefato.
+    <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-5">
+      <h3 className="text-sm font-semibold text-foreground">Upload em lote (CSV)</h3>
+      <p className="text-sm text-muted-foreground">
+        Arquivo com cabeçalho <code>name,type,technology,description</code> (ou{" "}
+        <code>nome,tipo,tecnologia,descricao</code>), separado por vírgula ou ponto-e-vírgula — uma linha por
+        Artefato.
       </p>
-      <input ref={fileInputRef} type="file" accept=".csv,text/csv" onChange={onFileSelected} />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv,text/csv"
+        onChange={onFileSelected}
+        className="text-sm text-foreground file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-secondary-foreground"
+      />
       {rows.length > 0 && (
         <>
-          <p>{rows.length} linha(s) prontas para envio:</p>
-          <ul>
+          <p className="text-sm text-foreground">{rows.length} linha(s) prontas para envio:</p>
+          <ul className="flex flex-col gap-1 text-sm text-muted-foreground">
             {rows.slice(0, 10).map((r, i) => (
               <li key={i}>
                 {r.name || "(sem nome)"} — {r.type || "(sem tipo)"}
@@ -372,13 +406,13 @@ function BulkArtifactUpload({ systemId }: { systemId: string }) {
             ))}
             {rows.length > 10 && <li>… e mais {rows.length - 10}</li>}
           </ul>
-          <button type="button" onClick={submit} disabled={bulkCreate.isPending}>
-            Enviar {rows.length} artefato(s)
-          </button>
+          <Button type="button" onClick={submit} disabled={bulkCreate.isPending} className="self-start">
+            <Upload /> Enviar {rows.length} artefato(s)
+          </Button>
         </>
       )}
       {results && (
-        <p className={errorRows.length ? "form-error" : "form-success"}>
+        <p className={`text-sm font-medium ${errorRows.length ? "text-destructive" : "text-success"}`}>
           {createdCount} criado(s), {errorRows.length} com erro
           {errorRows.length > 0 &&
             `: ${errorRows.map((r) => `linha ${r.row} (${r.name}) — ${r.message}`).join("; ")}`}

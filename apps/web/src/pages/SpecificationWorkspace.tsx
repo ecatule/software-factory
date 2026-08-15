@@ -3,6 +3,22 @@ import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import { MarkdownEditor, DiffView, Badge, DataTable, Modal } from "@software-factory/ui";
+import {
+  ArrowLeftRight,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  Eye,
+  RotateCcw,
+  Sparkles,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { apiGet, apiPost, ApiError } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useSpecification } from "../services/useSpecificationVersions";
@@ -93,6 +109,9 @@ const WIZARD_STEPS = [
   "Revisão",
 ] as const;
 
+const textareaClass =
+  "w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
 /**
  * spec User Story 1: wizard de 5 etapas — Informações de negócio/técnicas →
  * Sistemas e Artefatos Envolvidos → Prompt SPEC (gerado automaticamente a
@@ -136,39 +155,43 @@ export function SpecificationWorkspace() {
     setTechnicalText(buildTechnicalTemplate(techList, originBranch));
   }, [projectTechnologies, originBranch, technicalTextTouched]);
 
-  if (!specificationId) return <p>No specification selected.</p>;
-  if (!specification) return <p>Loading…</p>;
+  if (!specificationId) return <p className="text-sm text-muted-foreground">No specification selected.</p>;
+  if (!specification) return <p className="text-sm text-muted-foreground">Loading…</p>;
 
   async function handleUpload(specifyMarkdown: string, planMarkdown: string) {
     await uploadVersion.mutateAsync({ specifyMarkdown, planMarkdown, reason: "Uploaded from external source" });
   }
 
   return (
-    <div className="specification-workspace-page">
-      <h1>Especificação Assistida — {specification.documentType}</h1>
-
-      <div className="wizard-header-actions">
-        <VersionHistoryButton specificationId={specificationId} hasPermission={hasPermission} />
-        {demandId && (
-          <SiblingDocumentsButton demandId={demandId} currentSpecificationId={specificationId} />
-        )}
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">
+          Especificação Assistida — {specification.documentType}
+        </h1>
+        <div className="flex items-center gap-2">
+          <VersionHistoryButton specificationId={specificationId} hasPermission={hasPermission} />
+          {demandId && (
+            <SiblingDocumentsButton demandId={demandId} currentSpecificationId={specificationId} />
+          )}
+        </div>
       </div>
 
       <WizardSteps current={step} onJump={setStep} />
 
-      <div style={{ display: step === 0 ? undefined : "none" }}>
-        <section>
-          <h2>Informações de negócio</h2>
+      <div style={{ display: step === 0 ? undefined : "none" }} className="flex flex-col gap-6">
+        <section className="flex flex-col gap-2">
+          <h2 className="text-sm font-semibold text-foreground">Informações de negócio</h2>
           <textarea
             placeholder="O que precisa ser feito, problema, objetivo, contexto, regras de negócio conhecidas, fluxos, critérios de aceite, restrições, observações"
             rows={8}
             value={businessText}
             onChange={(e) => setBusinessText(e.target.value)}
+            className={textareaClass}
           />
         </section>
 
-        <section>
-          <h2>Insumos técnicos</h2>
+        <section className="flex flex-col gap-2">
+          <h2 className="text-sm font-semibold text-foreground">Insumos técnicos</h2>
           <textarea
             placeholder="Telas/APIs/serviços/componentes/banco envolvidos, repositórios, observações técnicas"
             rows={6}
@@ -177,6 +200,7 @@ export function SpecificationWorkspace() {
               setTechnicalTextTouched(true);
               setTechnicalText(e.target.value);
             }}
+            className={textareaClass}
           />
         </section>
       </div>
@@ -202,18 +226,18 @@ export function SpecificationWorkspace() {
 
       <div style={{ display: step === 4 ? undefined : "none" }}>{demandId && <ReviewStep demandId={demandId} />}</div>
 
-      <div className="wizard-nav">
+      <div className="flex items-center justify-between border-t border-border pt-4">
         {step > 0 ? (
-          <button type="button" onClick={() => setStep(step - 1)}>
-            ← Voltar
-          </button>
+          <Button type="button" variant="outline" onClick={() => setStep(step - 1)}>
+            <ChevronLeft /> Voltar
+          </Button>
         ) : (
           <span />
         )}
         {step < WIZARD_STEPS.length - 1 && (
-          <button type="button" onClick={() => setStep(step + 1)}>
-            Avançar →
-          </button>
+          <Button type="button" onClick={() => setStep(step + 1)}>
+            Avançar <ChevronRight />
+          </Button>
         )}
       </div>
     </div>
@@ -222,13 +246,18 @@ export function SpecificationWorkspace() {
 
 function WizardSteps({ current, onJump }: { current: number; onJump: (step: number) => void }) {
   return (
-    <div className="wizard-steps">
+    <div className="flex flex-wrap gap-2 border-b border-border pb-4">
       {WIZARD_STEPS.map((label, index) => (
         <button
           key={label}
           type="button"
-          className={index === current ? "wizard-step wizard-step-active" : "wizard-step"}
           onClick={() => onJump(index)}
+          className={cn(
+            "rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors",
+            index === current
+              ? "border-primary bg-primary text-primary-foreground"
+              : "border-border bg-card text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+          )}
         >
           Parte {index + 1}: {label}
         </button>
@@ -265,9 +294,9 @@ function VersionHistoryButton({
 
   return (
     <>
-      <button type="button" onClick={() => setIsOpen(true)}>
+      <Button type="button" variant="outline" onClick={() => setIsOpen(true)}>
         Histórico de versões
-      </button>
+      </Button>
       <Modal title="Histórico de versões" isOpen={isOpen} onClose={() => setIsOpen(false)} className="modal-wide">
         <DataTable
           columns={versionColumns(
@@ -283,8 +312,8 @@ function VersionHistoryButton({
           emptyMessage="No versions yet."
         />
         {diff && (
-          <section>
-            <h3>Diff</h3>
+          <section className="mt-4 flex flex-col gap-2 border-t border-border pt-4">
+            <h3 className="text-sm font-semibold text-foreground">Diff</h3>
             <DiffView additions={diff.additions} deletions={diff.deletions} />
           </section>
         )}
@@ -306,8 +335,7 @@ function VersionHistoryButton({
 /**
  * follow-up: Version history was a plain text list with text-labeled
  * buttons ("Aprovar"/"Restore"/"Diff vs previous") — now a grid, actions as
- * icon buttons (same `.icon-button`/`.icon-actions` convention as the
- * Systems Artefatos grid).
+ * icon buttons.
  */
 function versionColumns(
   totalVersions: number,
@@ -331,27 +359,29 @@ function versionColumns(
       cell: ({ row }) => {
         const v = row.original;
         return (
-          <span className="icon-actions">
-            <button type="button" className="icon-button" title="Visualizar" aria-label="Visualizar" onClick={() => onView(v)}>
-              👁
-            </button>
+          <span className="flex items-center gap-1">
+            <Button type="button" variant="ghost" size="icon" className="size-8" title="Visualizar" aria-label="Visualizar" onClick={() => onView(v)}>
+              <Eye className="size-4" />
+            </Button>
             {v.status !== "APPROVED" && hasPermission("SPECIFICATION_APPROVE") && (
-              <button type="button" className="icon-button" title="Aprovar" aria-label="Aprovar" onClick={() => onApprove(v)}>
-                ✓
-              </button>
+              <Button type="button" variant="ghost" size="icon" className="size-8" title="Aprovar" aria-label="Aprovar" onClick={() => onApprove(v)}>
+                <Check className="size-4" />
+              </Button>
             )}
-            <button type="button" className="icon-button" title="Restaurar" aria-label="Restaurar" onClick={() => onRestore(v)}>
-              ↺
-            </button>
+            <Button type="button" variant="ghost" size="icon" className="size-8" title="Restaurar" aria-label="Restaurar" onClick={() => onRestore(v)}>
+              <RotateCcw className="size-4" />
+            </Button>
             {totalVersions > 1 && v.versionNumber > 1 && (
-              <button type="button" className="icon-button" title="Diff vs anterior" aria-label="Diff vs anterior" onClick={() => onDiff(v)}>
-                ⇄
-              </button>
+              <Button type="button" variant="ghost" size="icon" className="size-8" title="Diff vs anterior" aria-label="Diff vs anterior" onClick={() => onDiff(v)}>
+                <ArrowLeftRight className="size-4" />
+              </Button>
             )}
             {v.status !== "APPROVED" && hasPermission("SPECIFICATION_WRITE") && (
-              <button
+              <Button
                 type="button"
-                className="icon-button"
+                variant="ghost"
+                size="icon"
+                className="size-8 text-destructive hover:text-destructive"
                 title="Excluir versão"
                 aria-label="Excluir versão"
                 onClick={() => {
@@ -360,8 +390,8 @@ function versionColumns(
                   }
                 }}
               >
-                🗑
-              </button>
+                <Trash2 className="size-4" />
+              </Button>
             )}
           </span>
         );
@@ -397,9 +427,9 @@ function SiblingDocumentsButton({
 
   return (
     <>
-      <button type="button" onClick={() => setIsListOpen(true)}>
+      <Button type="button" variant="outline" onClick={() => setIsListOpen(true)}>
         Outros documentos
-      </button>
+      </Button>
       <Modal title="Outros documentos desta demanda" isOpen={isListOpen} onClose={() => setIsListOpen(false)}>
         <DataTable
           columns={siblingDocumentColumns((s) => {
@@ -417,23 +447,25 @@ function SiblingDocumentsButton({
   );
 }
 
-/** follow-up: "Outros documentos" was a plain text list ("Visualizar" as a text button) — now a grid with an icon-button action, same `.icon-button`/`.icon-actions` convention as `versionColumns`. */
+/** follow-up: "Outros documentos" was a plain text list ("Visualizar" as a text button) — now a grid with an icon-button action. */
 function siblingDocumentColumns(onView: (specification: Specification) => void): ColumnDef<Specification, unknown>[] {
   return [
     { header: "Documento", accessorKey: "documentType" },
     {
       header: "Ações",
       cell: ({ row }) => (
-        <span className="icon-actions">
-          <button
+        <span className="flex items-center gap-1">
+          <Button
             type="button"
-            className="icon-button"
+            variant="ghost"
+            size="icon"
+            className="size-8"
             title="Visualizar"
             aria-label="Visualizar"
             onClick={() => onView(row.original)}
           >
-            👁
-          </button>
+            <Eye className="size-4" />
+          </Button>
         </span>
       ),
     },
@@ -454,7 +486,7 @@ function SiblingDocumentModal({
       {latest ? (
         <MarkdownEditor value={latest.content} onChange={() => {}} readOnly />
       ) : (
-        <p>Carregando…</p>
+        <p className="text-sm text-muted-foreground">Carregando…</p>
       )}
     </Modal>
   );
@@ -533,32 +565,47 @@ function SystemSelection({ demandId }: { demandId: string }) {
     setSaveMessage("Seleção salva com sucesso.");
   }
 
+  const availableArtifacts =
+    artifactsData?.available.filter((a) => !selectedArtifactIds.has(a.id)) ?? [];
+
   return (
-    <section>
-      <h2>Sistemas e Artefatos Envolvidos</h2>
-      <p className="section-hint">
-        Selecione quais Sistemas do Cliente desta demanda estão envolvidos — para cada um marcado, os
-        Artefatos ativos ficam disponíveis para seleção abaixo.
-      </p>
-      {!systemsData?.available.length && <p>Nenhum Sistema associado a este Cliente.</p>}
-      <div className="system-list">
+    <section className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-sm font-semibold text-foreground">Sistemas e Artefatos Envolvidos</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Selecione quais Sistemas do Cliente desta demanda estão envolvidos — para cada um marcado, os
+          Artefatos ativos ficam disponíveis para seleção abaixo.
+        </p>
+      </div>
+      {!systemsData?.available.length && (
+        <p className="text-sm text-muted-foreground">Nenhum Sistema associado a este Cliente.</p>
+      )}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {systemsData?.available.map((system) => {
           const isSelected = selectedSystemIds.includes(system.id);
           return (
             <label
               key={system.id}
-              className={isSelected ? "system-card system-card-selected" : "system-card"}
+              className={cn(
+                "flex cursor-pointer items-start gap-3 rounded-lg border p-3.5 transition-colors",
+                isSelected ? "border-primary bg-accent" : "border-border bg-card hover:bg-accent/50",
+              )}
             >
               <input
                 type="checkbox"
                 checked={isSelected}
                 onChange={() => toggleSystem(system.id)}
                 disabled={!canWrite}
+                className="mt-0.5 size-4 shrink-0 rounded border-input accent-primary"
               />
-              <span className="system-card-body">
-                <span className="system-card-eyebrow">Sistema</span>
-                <span className="system-card-name">{system.name}</span>
-                {system.description && <span className="system-card-description">{system.description}</span>}
+              <span className="flex flex-col gap-0.5">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Sistema
+                </span>
+                <span className="text-sm font-semibold text-foreground">{system.name}</span>
+                {system.description && (
+                  <span className="text-xs text-muted-foreground">{system.description}</span>
+                )}
               </span>
             </label>
           );
@@ -567,21 +614,26 @@ function SystemSelection({ demandId }: { demandId: string }) {
 
       {selectedSystemIds.length > 0 && (
         <>
-          <h3>Artefatos selecionados</h3>
-          {selectedArtifacts.length === 0 && <p>Nenhum artefato selecionado ainda.</p>}
-          <div className="chip-list">
+          <h3 className="text-sm font-semibold text-foreground">Artefatos selecionados</h3>
+          {selectedArtifacts.length === 0 && (
+            <p className="text-sm text-muted-foreground">Nenhum artefato selecionado ainda.</p>
+          )}
+          <div className="flex flex-wrap gap-2">
             {selectedArtifacts.map((artifact) => (
-              <span className="chip" key={artifact.id}>
+              <span
+                key={artifact.id}
+                className="flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1 text-sm text-secondary-foreground"
+              >
                 {artifact.name} ({artifact.type})
                 {canWrite && (
                   <button
                     type="button"
-                    className="chip-remove"
                     title="Remover"
                     aria-label={`Remover ${artifact.name}`}
                     onClick={() => removeArtifact(artifact.id)}
+                    className="grid size-4 place-items-center rounded-full bg-transparent text-muted-foreground hover:text-foreground"
                   >
-                    ×
+                    <X className="size-3" />
                   </button>
                 )}
               </span>
@@ -589,9 +641,9 @@ function SystemSelection({ demandId }: { demandId: string }) {
           </div>
 
           {canWrite && (
-            <div className="autocomplete">
-              <h3>Adicionar artefato</h3>
-              <input
+            <div className="relative max-w-md">
+              <h3 className="mb-1.5 text-sm font-semibold text-foreground">Adicionar artefato</h3>
+              <Input
                 type="search"
                 placeholder="Buscar por nome…"
                 value={artifactSearch}
@@ -603,26 +655,25 @@ function SystemSelection({ demandId }: { demandId: string }) {
                 }}
               />
               {isSearchOpen && (
-                <ul className="autocomplete-dropdown">
-                  {artifactsData?.available
-                    .filter((a) => !selectedArtifactIds.has(a.id))
-                    .map((artifact) => (
-                      <li key={artifact.id}>
-                        {/* preventDefault keeps the input focused (no blur) so the dropdown
-                            stays open and the field stays filterable across multiple picks */}
-                        <button
-                          type="button"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            addArtifact(artifact);
-                          }}
-                        >
-                          {artifact.name} ({artifact.type})
-                        </button>
-                      </li>
-                    ))}
-                  {artifactsData && artifactsData.available.filter((a) => !selectedArtifactIds.has(a.id)).length === 0 && (
-                    <li className="autocomplete-empty">
+                <ul className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-border bg-card py-1 shadow-lg">
+                  {availableArtifacts.map((artifact) => (
+                    <li key={artifact.id}>
+                      {/* preventDefault keeps the input focused (no blur) so the dropdown
+                          stays open and the field stays filterable across multiple picks */}
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          addArtifact(artifact);
+                        }}
+                        className="w-full rounded-none bg-transparent px-3 py-1.5 text-left text-sm text-foreground hover:bg-accent"
+                      >
+                        {artifact.name} ({artifact.type})
+                      </button>
+                    </li>
+                  ))}
+                  {artifactsData && availableArtifacts.length === 0 && (
+                    <li className="px-3 py-1.5 text-sm text-muted-foreground">
                       {artifactSearch ? "Nenhum artefato encontrado." : "Nenhum artefato disponível."}
                     </li>
                   )}
@@ -634,11 +685,16 @@ function SystemSelection({ demandId }: { demandId: string }) {
       )}
 
       {canWrite && (
-        <button type="button" onClick={saveSelection} disabled={setSystems.isPending || setArtifacts.isPending}>
+        <Button
+          type="button"
+          onClick={saveSelection}
+          disabled={setSystems.isPending || setArtifacts.isPending}
+          className="self-start"
+        >
           Salvar seleção
-        </button>
+        </Button>
       )}
-      {saveMessage && <p className="form-success">{saveMessage}</p>}
+      {saveMessage && <p className="text-sm font-medium text-success">{saveMessage}</p>}
     </section>
   );
 }
@@ -688,20 +744,22 @@ function PromptSpecPanel({
   }
 
   return (
-    <section>
-      <h2>Prompt SPEC</h2>
+    <section className="flex flex-col gap-3">
+      <h2 className="text-sm font-semibold text-foreground">Prompt SPEC</h2>
       {hasPermission("SPEC_PROMPT_GENERATE") && (
-        <button type="button" onClick={generate} disabled={generatePrompt.isPending}>
-          {generatePrompt.data ? "Regenerar Prompt SPEC" : "Gerar Prompt SPEC"}
-        </button>
+        <Button type="button" variant="outline" onClick={generate} disabled={generatePrompt.isPending} className="self-start">
+          <Sparkles /> {generatePrompt.data ? "Regenerar Prompt SPEC" : "Gerar Prompt SPEC"}
+        </Button>
       )}
       {generatePrompt.data && (
         <>
-          <textarea readOnly rows={16} value={generatePrompt.data.prompt} />
-          <button type="button" onClick={copyPrompt}>
-            Copiar Prompt
-          </button>
-          {copied && <span> Copiado!</span>}
+          <textarea readOnly rows={16} value={generatePrompt.data.prompt} className={cn(textareaClass, "font-mono text-xs")} />
+          <div className="flex items-center gap-2">
+            <Button type="button" onClick={copyPrompt} className="self-start">
+              <Copy /> Copiar Prompt
+            </Button>
+            {copied && <span className="text-sm text-success">Copiado!</span>}
+          </div>
         </>
       )}
     </section>
@@ -729,10 +787,13 @@ function FileDropField({
   }
 
   return (
-    <div className="form-field">
-      <label>{label}</label>
+    <div className="flex flex-col gap-1.5">
+      <label className="text-sm font-medium text-foreground">{label}</label>
       <div
-        className={isDragging ? "file-drop-zone file-drop-zone-active" : "file-drop-zone"}
+        className={cn(
+          "cursor-pointer rounded-lg border-2 border-dashed px-4 py-6 text-center text-sm text-muted-foreground transition-colors",
+          isDragging ? "border-primary bg-accent" : "border-border bg-card hover:bg-accent/50",
+        )}
         onDragOver={(e) => {
           e.preventDefault();
           setIsDragging(true);
@@ -761,6 +822,7 @@ function FileDropField({
         rows={6}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        className={textareaClass}
       />
     </div>
   );
@@ -792,8 +854,8 @@ function UploadPanel({
   }
 
   return (
-    <section>
-      <h2>Anexar arquivos prontos</h2>
+    <section className="flex flex-col gap-4">
+      <h2 className="text-sm font-semibold text-foreground">Anexar arquivos prontos</h2>
       <FileDropField
         label="specify.md"
         placeholder="Ou cole o conteúdo de specify.md aqui"
@@ -806,15 +868,16 @@ function UploadPanel({
         value={planMarkdown}
         onChange={setPlanMarkdown}
       />
-      {error && <p className="form-error">{error}</p>}
-      {message && <p className="form-success">{message}</p>}
-      <button
+      {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+      {message && <p className="text-sm font-medium text-success">{message}</p>}
+      <Button
         type="button"
         onClick={handleClick}
         disabled={isBusy || (!specifyMarkdown.trim() && !planMarkdown.trim())}
+        className="self-start"
       >
-        Anexar
-      </button>
+        <Upload /> Anexar
+      </Button>
     </section>
   );
 }
@@ -926,35 +989,42 @@ function ReviewStep({ demandId }: { demandId: string }) {
     (!!specLatest && specLatest.status !== "APPROVED") || (!!planLatest && planLatest.status !== "APPROVED");
 
   return (
-    <section>
-      <h2>Revisão{currentIncrement && <small> — Incremento {currentIncrement.number}</small>}</h2>
-      <div className="review-split">
-        <div>
-          <h3>SPEC {specLatest && <Badge label={specLatest.status} tone={STATUS_TONE[specLatest.status] ?? "neutral"} />}</h3>
+    <section className="flex flex-col gap-4">
+      <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+        Revisão
+        {currentIncrement && <span className="text-muted-foreground">— Incremento {currentIncrement.number}</span>}
+      </h2>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="flex flex-col gap-2">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            SPEC {specLatest && <Badge label={specLatest.status} tone={STATUS_TONE[specLatest.status] ?? "neutral"} />}
+          </h3>
           {specLatest ? (
             <MarkdownEditor value={specLatest.content} onChange={() => {}} readOnly />
           ) : (
             <>
-              <p>Nenhuma versão registrada ainda neste incremento.</p>
+              <p className="text-sm text-muted-foreground">Nenhuma versão registrada ainda neste incremento.</p>
               {specBaseVersion && (
-                <button type="button" onClick={() => setViewingBaseVersion(specBaseVersion)}>
+                <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => setViewingBaseVersion(specBaseVersion)}>
                   Ver versão base
-                </button>
+                </Button>
               )}
             </>
           )}
         </div>
-        <div>
-          <h3>PLAN {planLatest && <Badge label={planLatest.status} tone={STATUS_TONE[planLatest.status] ?? "neutral"} />}</h3>
+        <div className="flex flex-col gap-2">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            PLAN {planLatest && <Badge label={planLatest.status} tone={STATUS_TONE[planLatest.status] ?? "neutral"} />}
+          </h3>
           {planLatest ? (
             <MarkdownEditor value={planLatest.content} onChange={() => {}} readOnly />
           ) : (
             <>
-              <p>Nenhuma versão registrada ainda neste incremento.</p>
+              <p className="text-sm text-muted-foreground">Nenhuma versão registrada ainda neste incremento.</p>
               {planBaseVersion && (
-                <button type="button" onClick={() => setViewingBaseVersion(planBaseVersion)}>
+                <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => setViewingBaseVersion(planBaseVersion)}>
                   Ver versão base
-                </button>
+                </Button>
               )}
             </>
           )}
@@ -972,10 +1042,10 @@ function ReviewStep({ demandId }: { demandId: string }) {
         </Modal>
       )}
 
-      {error && <p className="form-error">{error}</p>}
-      {message && <p className="form-success">{message}</p>}
+      {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+      {message && <p className="text-sm font-medium text-success">{message}</p>}
       {runningExecution.data && (
-        <p>
+        <p className="flex items-center gap-2 text-sm text-foreground">
           Execução do Developer Agent:{" "}
           <Badge
             label={runningExecution.data.status}
@@ -983,21 +1053,21 @@ function ReviewStep({ demandId }: { demandId: string }) {
           />
           {runningExecution.data.status === "RUNNING" &&
             pipelineStageLabel(runningExecution.data.pipelineStage) && (
-              <> — {pipelineStageLabel(runningExecution.data.pipelineStage)}</>
+              <span className="text-muted-foreground">— {pipelineStageLabel(runningExecution.data.pipelineStage)}</span>
             )}
           {runningExecution.data.status === "FAILED" && runningExecution.data.error && (
-            <span className="form-error"> — {runningExecution.data.error}</span>
+            <span className="font-medium text-destructive"> — {runningExecution.data.error}</span>
           )}
         </p>
       )}
 
-      <div className="review-actions">
-        <button type="button" onClick={handleApprove} disabled={isBusy || !hasAnythingToApprove}>
+      <div className="flex items-center gap-2">
+        <Button type="button" variant="outline" onClick={handleApprove} disabled={isBusy || !hasAnythingToApprove}>
           Aprovar
-        </button>
-        <button type="button" onClick={handleApproveAndExecute} disabled={isBusy || !specLatest || !planLatest}>
+        </Button>
+        <Button type="button" onClick={handleApproveAndExecute} disabled={isBusy || !specLatest || !planLatest}>
           Aprovar e executar
-        </button>
+        </Button>
       </div>
     </section>
   );

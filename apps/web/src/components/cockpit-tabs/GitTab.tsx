@@ -7,8 +7,8 @@ interface Props {
 
 export function GitTab({ activity }: Props) {
   return (
-    <div className="cockpit-tab">
-      <h2>Git</h2>
+    <div className="flex flex-col gap-3">
+      <h2 className="text-sm font-semibold text-foreground">Git</h2>
       <GitActivity activity={activity} />
     </div>
   );
