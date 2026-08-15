@@ -131,9 +131,16 @@ export class ExecutionsProcessor extends WorkerHost {
         // after `specify init` runs (never before — that command can wipe
         // `.specify/`), so `/speckit-implement` always sees this Software
         // Factory's current approved content regardless of how it got there.
-        const { specContent, planContent } = await this.developerAgent.resolveCurrentSpecAndPlanContent(
-          execution.demandId,
-        );
+        const { specContent, planContent, specVersionId, planVersionId } =
+          await this.developerAgent.resolveCurrentSpecAndPlanContent(execution.demandId);
+        // follow-up: recorded so a later `ExecutionsService.retry()` can
+        // tell whether SPEC/PLAN changed since this attempt — only safe to
+        // skip straight to `implement` (see resumeFromStage below) when
+        // they still match.
+        await this.prisma.db.agentExecution.update({
+          where: { id: execution.id },
+          data: { specVersionId, planVersionId },
+        });
         const sddContext = {
           ...context,
           constitution,
@@ -141,6 +148,16 @@ export class ExecutionsProcessor extends WorkerHost {
           planContent,
           demandTitle: demand.title,
         };
+        // follow-up: set by `ExecutionsService.retry()` when it determined
+        // this attempt is resuming a previous one whose tasks/analyze/
+        // checklist already succeeded (see resolveArtifactRepositoryLinks
+        // is unaffected — only these 3 Claude calls are skippable, since
+        // their output already sits in the workspace on disk and their
+        // SpecificationVersion rows already exist from the original run).
+        const resumeFromStage = (execution.input as Record<string, unknown> | null)?.resumeFromStage as
+          | string
+          | undefined;
+        const canSkipToImplement = resumeFromStage === "implement";
 
         // follow-up (live-validation finding): `/speckit-implement` refuses
         // to proceed without a `tasks.md` breakdown ("no tasks.md, please
@@ -148,36 +165,46 @@ export class ExecutionsProcessor extends WorkerHost {
         // requires `tasks.md` to already exist. Every developer execution
         // must run the full pre-implement SDD chain — not just spec/plan —
         // regardless of whether spec/plan came from a real pipeline run or
-        // a manual upload.
-        await updateProgress("tasks");
-        const tasksResult = await this.sddProvider.tasks({
-          demandId: execution.demandId,
-          workspacePath,
-          context: sddContext,
-        });
-        await this.writeSpecificationVersion(execution, "tasks", tasksResult.content);
+        // a manual upload. UNLESS resuming (canSkipToImplement) — then
+        // tasks.md/analysis.md/checklists/*.md already exist in the
+        // workspace from the original attempt, and their
+        // SpecificationVersion rows already exist too — just re-mark the
+        // stages as visited (fast) without calling Claude again.
+        if (!canSkipToImplement) {
+          await updateProgress("tasks");
+          const tasksResult = await this.sddProvider.tasks({
+            demandId: execution.demandId,
+            workspacePath,
+            context: sddContext,
+            executionId: execution.id,
+          });
+          await this.writeSpecificationVersion(execution, "tasks", tasksResult.content);
 
-        await updateProgress("analyze");
-        const analyzeResult = await this.sddProvider.analyze({
-          demandId: execution.demandId,
-          workspacePath,
-          context: sddContext,
-        });
-        await this.writeSpecificationVersion(execution, "analyze", analyzeResult.content);
+          await updateProgress("analyze");
+          const analyzeResult = await this.sddProvider.analyze({
+            demandId: execution.demandId,
+            workspacePath,
+            context: sddContext,
+            executionId: execution.id,
+          });
+          await this.writeSpecificationVersion(execution, "analyze", analyzeResult.content);
 
-        await updateProgress("checklist");
-        const checklistResult = await this.sddProvider.checklist({
-          demandId: execution.demandId,
-          workspacePath,
-          context: sddContext,
-        });
-        await this.writeSpecificationVersion(execution, "checklist", checklistResult.content);
+          await updateProgress("checklist");
+          const checklistResult = await this.sddProvider.checklist({
+            demandId: execution.demandId,
+            workspacePath,
+            context: sddContext,
+            executionId: execution.id,
+          });
+          await this.writeSpecificationVersion(execution, "checklist", checklistResult.content);
+        }
 
         await updateProgress("implement");
         const result = await this.sddProvider.implement({
           demandId: execution.demandId,
           workspacePath,
           context: sddContext,
+          executionId: execution.id,
         });
 
         const [firstArtifact] = await this.prisma.db.artifact.findMany({
@@ -238,9 +265,10 @@ export class ExecutionsProcessor extends WorkerHost {
           }
         }
 
-        await this.prisma.db.agentExecution.update({
-          where: { id: execution.id },
-          data: { status: "COMPLETED", finishedAt: new Date(), output: { ...result, commits: commitResults } },
+        await this.setTerminalStatus(execution.id, {
+          status: "COMPLETED",
+          finishedAt: new Date(),
+          output: { ...result, commits: commitResults },
         });
         await this.workflows.advanceToStage(execution.demandId, "TESTING");
         return;
@@ -269,9 +297,10 @@ export class ExecutionsProcessor extends WorkerHost {
 
         await this.writeSpecificationVersionsFromProposal(execution, increment.id, proposal);
 
-        await this.prisma.db.agentExecution.update({
-          where: { id: execution.id },
-          data: { status: "COMPLETED", finishedAt: new Date(), output: proposal as object },
+        await this.setTerminalStatus(execution.id, {
+          status: "COMPLETED",
+          finishedAt: new Date(),
+          output: proposal as object,
         });
         return;
       }
@@ -292,31 +321,50 @@ export class ExecutionsProcessor extends WorkerHost {
         demandId: execution.demandId,
         workspacePath,
         context: { ...context, description, constitution },
+        executionId: execution.id,
       });
 
       await this.writeSpecificationVersion(execution, stage, result.content);
 
-      await this.prisma.db.agentExecution.update({
-        where: { id: execution.id },
-        data: { status: "COMPLETED", finishedAt: new Date(), output: result },
+      await this.setTerminalStatus(execution.id, {
+        status: "COMPLETED",
+        finishedAt: new Date(),
+        output: result,
       });
 
       await this.workflows.advanceToNextStage(execution.demandId);
     } catch (error) {
       this.logger.error(`Execution ${execution.id} failed`, error as Error);
-      await this.prisma.db.agentExecution.update({
-        where: { id: execution.id },
-        data: {
-          status: "FAILED",
-          finishedAt: new Date(),
-          error: error instanceof Error ? error.message : String(error),
-        },
+      await this.setTerminalStatus(execution.id, {
+        status: "FAILED",
+        finishedAt: new Date(),
+        error: error instanceof Error ? error.message : String(error),
       });
       if (execution.agent.type === "developer") {
         await this.workflows.advanceToStage(execution.demandId, "FAILED");
       }
       throw error;
     }
+  }
+
+  /**
+   * follow-up: a "Cancelar" click marks the AgentExecution row CANCELLED
+   * directly (`ExecutionsService.cancel`), but the worker processing it may
+   * still be mid-flight and unaware — when it eventually finishes or
+   * errors, its own terminal-status write must NOT clobber a CANCELLED row.
+   * Live-observed: without this guard, a cancelled execution's own
+   * in-flight subprocess finishing (or erroring) minutes later silently
+   * turned CANCELLED back into COMPLETED/FAILED. `updateMany` with a status
+   * filter (instead of `update`) makes this a no-op once cancelled.
+   */
+  private async setTerminalStatus(
+    executionId: string,
+    data: { status: "COMPLETED" | "FAILED"; finishedAt: Date; output?: object; error?: string },
+  ): Promise<void> {
+    await this.prisma.db.agentExecution.updateMany({
+      where: { id: executionId, status: { notIn: ["CANCELLED"] } },
+      data,
+    });
   }
 
   /** feature 003 (research.md §4): reject a malformed LLM response before persisting anything. */

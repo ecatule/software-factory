@@ -41,14 +41,27 @@ export class GitHubRepositoryProvider implements CodeRepositoryProvider {
    * `ensureBranchesForDemand` calls this BEFORE any clone exists
    * (`ensureRepositoriesCloned` runs after) — there is no local working
    * copy to `git checkout -b` against yet, so the branch is created
-   * directly via the GitHub REST API, off the repository's default branch.
-   * `checkoutBranch` (called later, once a real clone exists) checks it out
-   * locally. Idempotent: a 422 means the ref already exists (e.g. a retry
-   * after a partial earlier failure), treated as success.
+   * directly via the GitHub REST API. Forks from `baseBranch` when given
+   * (falling back to the repo's own default branch if that ref doesn't
+   * exist on this specific repo) — otherwise from the repo's default
+   * branch, same as before. `checkoutBranch` (called later, once a real
+   * clone exists) checks it out locally. Idempotent: a 422 means the ref
+   * already exists (e.g. a retry after a partial earlier failure), treated
+   * as success.
    */
-  async createBranch(externalReference: string, branchName: string): Promise<BranchRef> {
+  async createBranch(externalReference: string, branchName: string, baseBranch?: string): Promise<BranchRef> {
     const repo = await this.api(`/repos/${externalReference}`);
-    const baseRef = await this.api(`/repos/${externalReference}/git/ref/heads/${repo.default_branch}`);
+    let baseRef: any;
+    if (baseBranch) {
+      try {
+        baseRef = await this.api(`/repos/${externalReference}/git/ref/heads/${baseBranch}`);
+      } catch {
+        baseRef = undefined;
+      }
+    }
+    if (!baseRef) {
+      baseRef = await this.api(`/repos/${externalReference}/git/ref/heads/${repo.default_branch}`);
+    }
     try {
       await this.api(`/repos/${externalReference}/git/refs`, {
         method: "POST",

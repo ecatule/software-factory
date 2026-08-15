@@ -1,9 +1,11 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { InjectQueue } from "@nestjs/bullmq";
 import { Queue } from "bullmq";
+import { SDD_PROVIDER, type SDDProvider } from "@software-factory/domain";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { paginate } from "../../common/pagination/paginate";
 import { EXECUTIONS_QUEUE } from "../../common/queue/queue.module";
+import { DeveloperAgentService } from "./developer-agent.service";
 import { CreateExecutionDto } from "./dto/execution.dto";
 
 export interface ExecutionJobData {
@@ -14,7 +16,9 @@ export interface ExecutionJobData {
 export class ExecutionsService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly developerAgent: DeveloperAgentService,
     @InjectQueue(EXECUTIONS_QUEUE) private readonly queue: Queue<ExecutionJobData>,
+    @Inject(SDD_PROVIDER) private readonly sddProvider: SDDProvider,
   ) {}
 
   /** spec 002 FR-021/FR-022: paginated, on top of 001's demand/agent/status filters. */
@@ -82,18 +86,65 @@ export class ExecutionsService {
     return execution;
   }
 
+  /**
+   * follow-up: "Retry" used to always redo the whole "developer" pipeline
+   * from scratch, including tasks/analyze/checklist even when those had
+   * already succeeded and only `implement` failed — ~4-5min of real Claude
+   * calls wasted every retry. Now detects when that's safe to skip: the
+   * original execution got at least as far as `implement` (i.e.
+   * tasks/analyze/checklist already succeeded — `pipelineStage` only
+   * reaches "implement"/"commit" after each of those completed) AND the
+   * demand's SPEC/PLAN haven't changed since (compared by
+   * SpecificationVersion id, recorded on the original execution — see
+   * `ExecutionsProcessor`). If either doesn't hold, retries the full
+   * pipeline exactly as before — this is purely an optimization, never a
+   * behavior change for the unsafe case.
+   */
   async retry(id: string) {
     const original = await this.get(id);
+    const input: Record<string, unknown> = {};
+
+    const reachedImplement =
+      original.pipelineStage === "implement" || original.pipelineStage === "commit";
+    if (
+      original.agent.type === "developer" &&
+      reachedImplement &&
+      original.specVersionId &&
+      original.planVersionId
+    ) {
+      const current = await this.developerAgent.resolveCurrentSpecAndPlanContent(original.demandId);
+      if (
+        current.specVersionId === original.specVersionId &&
+        current.planVersionId === original.planVersionId
+      ) {
+        input.resumeFromStage = "implement";
+      }
+    }
+
     return this.create({
       agentId: original.agentId,
       demandId: original.demandId,
       providerConfigurationId: original.providerConfigurationId ?? undefined,
       pipelineStage: original.pipelineStage ?? undefined,
+      input,
     });
   }
 
+  /**
+   * follow-up: previously only flipped the DB status — the actual
+   * subprocess (headless `claude`, see `SpecKitProvider`) kept running
+   * unattended, and its eventual completion/failure could silently
+   * overwrite this CANCELLED status later
+   * (`ExecutionsProcessor.setTerminalStatus` now guards against that too).
+   * `sddProvider.cancel` is optional (Provider Abstraction) and only does
+   * anything when a process is actually still tracked as running for this
+   * execution id.
+   */
   async cancel(id: string) {
-    await this.get(id);
+    const execution = await this.get(id);
+    if (execution.status === "RUNNING") {
+      this.sddProvider.cancel?.(id);
+    }
     return this.prisma.db.agentExecution.update({
       where: { id },
       data: { status: "CANCELLED", finishedAt: new Date() },

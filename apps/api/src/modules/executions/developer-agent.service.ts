@@ -25,6 +25,8 @@ interface ArtifactRepositoryLink {
   repositoryId: string;
   /** Composed "owner/repo" — see repository-reference.ts. */
   externalReference: string;
+  /** follow-up: threaded through to `createBranch()` so new branches fork from production, not GitHub's own default branch. */
+  productionBranch: string | null;
 }
 
 /**
@@ -91,7 +93,11 @@ export class DeveloperAgentService {
       }
 
       const branchName = this.buildBranchName(project.branchNamingPolicy, demand);
-      await this.codeRepositoryProvider.createBranch(link.externalReference, branchName);
+      await this.codeRepositoryProvider.createBranch(
+        link.externalReference,
+        branchName,
+        link.productionBranch ?? undefined,
+      );
       branches.push(
         await this.prisma.db.branch.create({
           data: { repositoryId: link.repositoryId, artifactId: link.artifactId, demandId, name: branchName },
@@ -202,22 +208,42 @@ export class DeveloperAgentService {
    * overwrite `.specify/`, so writing the feature files before it would
    * risk them being wiped).
    */
-  async resolveCurrentSpecAndPlanContent(
-    demandId: string,
-  ): Promise<{ specContent?: string; planContent?: string }> {
+  async resolveCurrentSpecAndPlanContent(demandId: string): Promise<{
+    specContent?: string;
+    planContent?: string;
+    // follow-up: also returns the version IDs actually used (not just their
+    // content) — `ExecutionsService.retry()` compares these against a new
+    // Retry attempt's current SPEC/PLAN to decide whether it's safe to skip
+    // straight to `implement` (tasks/analyze/checklist already succeeded)
+    // or whether the SPEC/PLAN changed since, and the whole pipeline needs
+    // to run again from scratch.
+    specVersionId?: string;
+    planVersionId?: string;
+  }> {
     const specifications = await this.prisma.db.specification.findMany({
       where: { demandId, documentType: { in: ["SPEC", "PLAN"] } },
     });
 
-    const result: { specContent?: string; planContent?: string } = {};
+    const result: {
+      specContent?: string;
+      planContent?: string;
+      specVersionId?: string;
+      planVersionId?: string;
+    } = {};
     for (const specification of specifications) {
       if (!specification.currentVersionId) continue;
       const version = await this.prisma.db.specificationVersion.findUnique({
         where: { id: specification.currentVersionId },
       });
       if (!version) continue;
-      if (specification.documentType === "SPEC") result.specContent = version.content;
-      if (specification.documentType === "PLAN") result.planContent = version.content;
+      if (specification.documentType === "SPEC") {
+        result.specContent = version.content;
+        result.specVersionId = version.id;
+      }
+      if (specification.documentType === "PLAN") {
+        result.planContent = version.content;
+        result.planVersionId = version.id;
+      }
     }
     return result;
   }
@@ -299,6 +325,7 @@ export class DeveloperAgentService {
           artifactId: artifact.id,
           repositoryId: link.repositoryId,
           externalReference: composeOwnerRepo(repository.externalReference, artifact.name),
+          productionBranch: repository.productionBranch,
         });
       }
     }

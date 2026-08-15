@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { DataTable, FormField, Modal, Pagination } from "@software-factory/ui";
+import { DataTable, FormField, Modal, Pagination, Badge } from "@software-factory/ui";
 import type { ColumnDef } from "@tanstack/react-table";
 import { ApiError } from "../services/api";
 import {
@@ -60,6 +60,10 @@ export function Repositories() {
     },
     { header: "Production branch", accessorKey: "productionBranch" },
     { header: "Homologation branch", accessorKey: "homologationBranch" },
+    {
+      header: "Status",
+      cell: ({ row }) => <Badge label={row.original.stAtivo ? "ACTIVE" : "INACTIVE"} />,
+    },
   ];
 
   function openCreate() {
@@ -102,6 +106,20 @@ export function Repositories() {
       setEditing(null);
     } catch (error) {
       setEditError(extractErrorMessage(error, "Failed to save repository."));
+    }
+  }
+
+  // follow-up: physical delete is forbidden by the project constitution —
+  // this was the only catalog screen missing an activate/deactivate toggle
+  // (Systems/SystemArtifact already had one), so a wrong/obsolete entry
+  // (e.g. a placeholder repo used by mistake) had no way to be gotten rid of.
+  async function toggleActive(repo: Repository) {
+    setEditError(null);
+    try {
+      await updateRepository.mutateAsync({ id: repo.id, stAtivo: !repo.stAtivo });
+      setEditing(null);
+    } catch (error) {
+      setEditError(extractErrorMessage(error, "Failed to update repository status."));
     }
   }
 
@@ -157,7 +175,7 @@ export function Repositories() {
       </Modal>
 
       <Modal
-        title="Edit repository"
+        title={editing ? `Edit repository — ${editing.stAtivo ? "ACTIVE" : "INACTIVE"}` : "Edit repository"}
         isOpen={editing !== null}
         onClose={() => setEditing(null)}
       >
@@ -182,9 +200,14 @@ export function Repositories() {
           <button type="submit">Save</button>
         </form>
         {editing && (
-          <button type="button" onClick={() => setShowingArtifactsFor(editing.id)}>
-            View linked artifacts
-          </button>
+          <>
+            <button type="button" onClick={() => setShowingArtifactsFor(editing.id)}>
+              View linked artifacts
+            </button>
+            <button type="button" onClick={() => toggleActive(editing)} disabled={updateRepository.isPending}>
+              {editing.stAtivo ? "Deactivate" : "Activate"}
+            </button>
+          </>
         )}
       </Modal>
 

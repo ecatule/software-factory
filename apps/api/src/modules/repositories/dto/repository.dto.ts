@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, IsUUID } from "class-validator";
+import { IsBoolean, IsNotEmpty, IsOptional, IsString, IsUUID } from "class-validator";
 
 /**
  * follow-up: Repository previously had no create endpoint at all — every
@@ -46,4 +46,13 @@ export class UpdateRepositoryDto {
   @IsOptional()
   @IsString()
   homologationBranch?: string;
+
+  // follow-up: Repositories was the only catalog screen with no way to
+  // deactivate a wrong/obsolete entry (Systems/SystemArtifact already had
+  // this) — physical delete is forbidden by the project constitution, so
+  // this is the only way to get rid of one (e.g. a placeholder repo
+  // mistakenly used instead of the real org).
+  @IsOptional()
+  @IsBoolean()
+  stAtivo?: boolean;
 }

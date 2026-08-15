@@ -34,7 +34,15 @@ export interface CheckRef {
 export interface CodeRepositoryProvider {
   getRepository(externalReference: string): Promise<RepositoryRef>;
   cloneRepository(externalReference: string, targetPath: string): Promise<void>;
-  createBranch(externalReference: string, branchName: string): Promise<BranchRef>;
+  /**
+   * `baseBranch`, when given, is the branch to fork from (e.g. the
+   * Repository's configured `productionBranch`) instead of whatever GitHub
+   * reports as the repo's own default branch. Implementations should fall
+   * back to the repo's actual default branch if `baseBranch` doesn't exist
+   * on that specific repo (a shared `Repository` row's `productionBranch`
+   * isn't guaranteed to apply to every real repo it backs).
+   */
+  createBranch(externalReference: string, branchName: string, baseBranch?: string): Promise<BranchRef>;
   /** Checks out `branchName` inside the clone at `targetPath` (creating it locally if new). */
   checkoutBranch(targetPath: string, branchName: string): Promise<void>;
   getFile(externalReference: string, branch: string, path: string): Promise<FileRef>;

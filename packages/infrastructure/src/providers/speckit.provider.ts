@@ -1,4 +1,4 @@
-import { exec } from "node:child_process";
+import { exec, execFile, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
 import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -10,6 +10,7 @@ import type {
 } from "@software-factory/domain";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export interface SpecKitAuthProfile {
   oauthToken?: string;
@@ -92,11 +93,46 @@ export class SpecKitProvider implements SDDProvider {
   private readonly specifyCommand: string;
   private readonly claudeCommand: string;
   private readonly timeoutMs: number;
+  // follow-up: real cancellation — one entry per currently-running `claude`
+  // subprocess, keyed by `SDDInput.executionId`. Only ever holds the ONE
+  // process a given execution is waiting on at any moment (tasks, then
+  // analyze, then checklist, then implement each register/unregister in
+  // turn), never a stale/finished one — cleared in `runClaude`'s `finally`.
+  private readonly activeProcesses = new Map<string, ChildProcess>();
 
   constructor(private readonly config: SpecKitConfig = {}) {
     this.specifyCommand = config.specifyCommand ?? "specify";
     this.claudeCommand = config.claudeCommand ?? "claude";
     this.timeoutMs = config.timeoutMs ?? 10 * 60 * 1000;
+  }
+
+  /**
+   * follow-up: live-observed that `child.kill()` alone is not enough on
+   * Windows — `execAsync` runs the command through `cmd.exe`
+   * (`spawn cmd.exe /d /s /c "claude ..."`), and Windows does not propagate
+   * a kill signal from a parent to its children the way POSIX process
+   * groups do. Killing just the `cmd.exe` PID left the real `claude.exe`
+   * process running for minutes, which is exactly what happened here before
+   * this fix — had to manually `Stop-Process` both PIDs. `taskkill /T`
+   * kills the whole process tree in one call; POSIX `SIGKILL` is sufficient
+   * there since `exec`'s shell (`/bin/sh -c`) typically execs into the
+   * final command, replacing itself rather than forking a child.
+   */
+  cancel(executionId: string): boolean {
+    const child = this.activeProcesses.get(executionId);
+    if (!child || !child.pid) return false;
+    if (process.platform === "win32") {
+      execFileAsync("taskkill", ["/pid", String(child.pid), "/T", "/F"]).catch(() => {
+        // best-effort — the process may have already exited on its own
+      });
+    } else {
+      try {
+        process.kill(child.pid, "SIGKILL");
+      } catch {
+        // already exited
+      }
+    }
+    return true;
   }
 
   async specify(input: SDDInput): Promise<ArtifactResult> {
@@ -378,15 +414,30 @@ export class SpecKitProvider implements SDDProvider {
       `${this.claudeCommand} -p ${JSON.stringify(prompt)} --dangerously-skip-permissions` +
       `${modelFlag} --output-format json`;
 
+    // follow-up: `util.promisify(exec)`'s returned Promise has a `.child`
+    // property (the real ChildProcess, documented Node behavior since
+    // v15.4) available synchronously, before awaiting — captured here so
+    // `cancel(executionId)` can kill this exact process later.
+    const execPromise = execAsync(command, {
+      cwd: input.workspacePath,
+      timeout: this.timeoutMs,
+      env,
+    });
+    const child = (execPromise as unknown as { child?: ChildProcess }).child;
+    if (input.executionId && child) {
+      this.activeProcesses.set(input.executionId, child);
+    }
+
     try {
-      const { stdout } = await execAsync(command, {
-        cwd: input.workspacePath,
-        timeout: this.timeoutMs,
-        env,
-      });
+      const { stdout } = await execPromise;
       return stdout.trim();
     } catch (error) {
-      const cause = error as NodeJS.ErrnoException & { stderr?: string };
+      const cause = error as NodeJS.ErrnoException & {
+        stderr?: string;
+        code?: number | string | null;
+        signal?: string | null;
+        killed?: boolean;
+      };
       if (cause.code === "ENOENT") {
         throw new Error(
           `SDD stage "${stageLabel}" failed: the "${this.claudeCommand}" CLI was not found on ` +
@@ -394,9 +445,19 @@ export class SpecKitProvider implements SDDProvider {
             "BullMQ worker runs.",
         );
       }
-      throw new Error(
-        `SDD stage "${stageLabel}" failed: ${cause.message}${cause.stderr ? `\n${cause.stderr}` : ""}`,
-      );
+      // follow-up (live-validation finding): the previous message was just
+      // `cause.message` (Node's own "Command failed: <cmd>\n<stderr>") with
+      // `cause.stderr` appended AGAIN — duplicated the same unhelpful stderr
+      // (often just a stdin warning) twice, and never surfaced WHY the
+      // process actually died (timed out vs. crashed vs. a real non-zero
+      // exit) — every failure looked identical and undiagnosable.
+      const reason = cause.killed
+        ? `killed by signal ${cause.signal ?? "unknown"} — likely hit the ${this.timeoutMs}ms timeout`
+        : `exited with code ${cause.code ?? "unknown"}`;
+      const detail = cause.stderr?.trim() || cause.message;
+      throw new Error(`SDD stage "${stageLabel}" failed (${reason}): ${detail}`);
+    } finally {
+      if (input.executionId) this.activeProcesses.delete(input.executionId);
     }
   }
 

@@ -9,6 +9,7 @@ export interface Repository {
   /** feature 004 FR-002. */
   productionBranch: string | null;
   homologationBranch: string | null;
+  stAtivo: boolean;
 }
 
 export function useRepositoriesList(page: number) {
@@ -45,6 +46,7 @@ export function useUpdateRepository() {
       externalReference?: string;
       productionBranch?: string;
       homologationBranch?: string;
+      stAtivo?: boolean;
     }) => apiPatch<Repository>(`/repositories/${id}`, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["repositories"] }),
   });

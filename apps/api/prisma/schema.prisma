@@ -496,6 +496,15 @@ model AgentExecution {
   input                   Json                 @default("{}")
   output                  Json?
   error                   String?
+  // follow-up: the SPEC/PLAN SpecificationVersion actually used by a
+  // "developer" execution's tasks/analyze/checklist/implement chain —
+  // recorded once at the start. `ExecutionsService.retry()` compares these
+  // against the demand's CURRENT SPEC/PLAN to decide whether it's safe to
+  // skip straight to `implement` (tasks/analyze/checklist already
+  // succeeded and nothing changed since) instead of re-running the whole
+  // pipeline from scratch.
+  specVersionId           String?              @map("spec_version_id") @db.Uuid
+  planVersionId           String?              @map("plan_version_id") @db.Uuid
 
   specificationVersions SpecificationVersion[]
 
@@ -882,9 +891,32 @@ model SystemArtifact {
   technology  String?
   description String?
 
-  demands DemandSystemArtifact[]
+  demands      DemandSystemArtifact[]
+  repositories SystemArtifactRepository[]
 
   @@map("system_artifacts")
+}
+
+// follow-up: `SystemArtifact` (feature 005 catalog) had no link to
+// `Repository` at all — only the demand-scoped `Artifact` model did (see
+// `ArtifactRepository`), which is the one the Developer Agent pipeline
+// actually reads (`DeveloperAgentService.resolveArtifactRepositoryLinks`).
+// Mirrors `ArtifactRepository` exactly, but at the catalog level (entered
+// once per SystemArtifact, reused by every demand that selects it) instead
+// of per-demand. Unlike `ArtifactRepository` (write-once, never edited),
+// this one needs to support un-linking a repository on edit — `ArtifactRepository`
+// has no `stAtivo` because it's never needed one; this does, because the
+// project's soft-delete guard (soft-delete.extension.ts) blocks
+// delete()/deleteMany() on every model, so "remove a link" has to be an
+// update, same pattern as `DemandSystemArtifact` below.
+model SystemArtifactRepository {
+  systemArtifactId String         @map("system_artifact_id") @db.Uuid
+  systemArtifact   SystemArtifact @relation(fields: [systemArtifactId], references: [id])
+  repositoryId     String         @map("repository_id") @db.Uuid
+  stAtivo          Boolean        @default(true) @map("st_ativo")
+
+  @@id([systemArtifactId, repositoryId])
+  @@map("system_artifact_repositories")
 }
 
 model ClientSystem {

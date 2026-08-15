@@ -18,6 +18,8 @@ export interface SystemArtifact {
   technology: string | null;
   description: string | null;
   stAtivo: boolean;
+  /** follow-up: catalog-level link to real Repository row(s) — lets a demand's selection of this SystemArtifact provision a real, clonable Artifact (see DemandsService.ensureArtifactsForSystemArtifacts). */
+  repositories?: { repositoryId: string }[];
 }
 
 export function useSystemsList(page = 1) {
@@ -82,6 +84,7 @@ export interface SystemArtifactInput {
   type: string;
   technology?: string;
   description?: string;
+  repositoryIds?: string[];
 }
 
 function invalidateSystemArtifacts(queryClient: ReturnType<typeof useQueryClient>, systemId: string) {

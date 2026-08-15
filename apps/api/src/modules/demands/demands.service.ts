@@ -383,6 +383,68 @@ export class DemandsService {
         }),
       ),
     ]);
+    await this.ensureArtifactsForSystemArtifacts(demandId, systemArtifactIds);
     return this.getAvailableAndSelectedSystemArtifacts(demandId);
+  }
+
+  /**
+   * follow-up: selecting a SystemArtifact (catalog, feature 005) in the SPEC
+   * wizard used to be a dead end for the Developer Agent — only the
+   * demand-scoped `Artifact` model (ArtifactRepository) is what
+   * `DeveloperAgentService.resolveArtifactRepositoryLinks` actually reads to
+   * know what to clone/branch/commit, and nothing ever created one from a
+   * SystemArtifact selection. Live-observed: a demand with 12
+   * DemandSystemArtifact rows (the right repos) still had the Developer
+   * Agent find nothing to clone, since it only ever looked at `Artifact`.
+   *
+   * For every selected SystemArtifact that already has at least one
+   * SystemArtifactRepository link (linked once, at the catalog level, in
+   * Sistemas — see SystemsService), finds-or-creates a same-named `Artifact`
+   * for this demand and makes sure it has the same repository links.
+   * Idempotent: safe to call on every save, only ever adds what's missing.
+   * A SystemArtifact with no repository linked yet is skipped silently —
+   * nothing to clone, not an error.
+   */
+  private async ensureArtifactsForSystemArtifacts(
+    demandId: string,
+    systemArtifactIds: string[],
+  ): Promise<void> {
+    if (systemArtifactIds.length === 0) return;
+
+    const systemArtifacts = await this.prisma.db.systemArtifact.findMany({
+      where: { id: { in: systemArtifactIds } },
+      include: { repositories: { where: { stAtivo: true } } },
+    });
+
+    for (const systemArtifact of systemArtifacts) {
+      if (systemArtifact.repositories.length === 0) continue;
+
+      const artifact =
+        (await this.prisma.db.artifact.findFirst({
+          where: { demandId, name: systemArtifact.name },
+        })) ??
+        (await this.prisma.db.artifact.create({
+          data: {
+            demandId,
+            name: systemArtifact.name,
+            type: systemArtifact.type,
+            technology: systemArtifact.technology,
+            description: systemArtifact.description,
+          },
+        }));
+
+      const existingLinks = await this.prisma.db.artifactRepository.findMany({
+        where: { artifactId: artifact.id },
+      });
+      const existingRepositoryIds = new Set(existingLinks.map((link) => link.repositoryId));
+      const missing = systemArtifact.repositories.filter(
+        (link) => !existingRepositoryIds.has(link.repositoryId),
+      );
+      if (missing.length > 0) {
+        await this.prisma.db.artifactRepository.createMany({
+          data: missing.map((link) => ({ artifactId: artifact.id, repositoryId: link.repositoryId })),
+        });
+      }
+    }
   }
 }

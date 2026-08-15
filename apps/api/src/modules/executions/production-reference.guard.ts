@@ -307,13 +307,32 @@ async function readTextFile(absolutePath: string): Promise<string | null> {
 }
 
 function findUnsafeConnectionStringHost(content: string, allowlist: AllowedHost[]): string | null {
+  const activeContent = stripCommentedLines(content);
   DB_CONNECTION_STRING.lastIndex = 0;
   let match: RegExpExecArray | null;
-  while ((match = DB_CONNECTION_STRING.exec(content))) {
+  while ((match = DB_CONNECTION_STRING.exec(activeContent))) {
     const host = match[2];
     if (host && !isPrivateOrSafeHost(host) && !isAllowedHost(host, allowlist)) return host;
   }
   return null;
+}
+
+/**
+ * follow-up (live-validation finding): a commented-out line
+ * (`#GRAPHENEDB_BOLT_URL=bolt://neo4j-tecgroup.vexur.com.br:7687`, kept as a
+ * dead/inactive reference alongside the real, already-sanitized value) still
+ * contained a real production hostname and blocked implementation — the app
+ * never reads a commented line, so this was a pure false positive. Blanks
+ * out (not removes, to keep line/position offsets stable for future
+ * callers) whichever comment style the line uses: "#" (.env/YAML/shell) or
+ * "//" (JS/TS) — deliberately not handling C-style block comments, rare for
+ * single-line secrets.
+ */
+function stripCommentedLines(content: string): string {
+  return content
+    .split(/\r\n|\n/)
+    .map((line) => (/^\s*(#|\/\/)/.test(line) ? "" : line))
+    .join("\n");
 }
 
 function findSecretLookingAssignment(

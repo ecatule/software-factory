@@ -16,6 +16,7 @@ import {
   type SystemArtifact,
   type SystemArtifactInput,
 } from "../services/useSystems";
+import { useRepositoriesList } from "../services/useRepositories";
 
 interface SystemFormValues {
   name: string;
@@ -97,6 +98,7 @@ interface ArtifactFormValues {
   type: string;
   technology: string;
   description: string;
+  repositoryIds: string[];
 }
 
 /**
@@ -109,6 +111,12 @@ function SystemArtifacts({ systemId }: { systemId: string }) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const { data, isLoading } = useSystemArtifacts(systemId, search, page);
+  // follow-up: `useRepositoriesList` returns every Repository regardless of
+  // status — Repositories.tsx needs that (it's where you manage/reactivate
+  // them), but this dropdown shouldn't ever offer linking an artifact to a
+  // deactivated (e.g. wrong/placeholder) repository.
+  const { data: repositoriesData } = useRepositoriesList(1);
+  const activeRepositories = repositoriesData?.items.filter((r) => r.stAtivo) ?? [];
   const createArtifact = useCreateSystemArtifact(systemId);
   const updateArtifact = useUpdateSystemArtifact(systemId);
   const [editingArtifact, setEditingArtifact] = useState<SystemArtifact | null>(null);
@@ -119,7 +127,7 @@ function SystemArtifacts({ systemId }: { systemId: string }) {
   const canWrite = hasPermission("SYSTEM_ARTIFACT_WRITE");
 
   function openCreate() {
-    reset({ name: "", type: ARTIFACT_TYPES[0], technology: "", description: "" });
+    reset({ name: "", type: ARTIFACT_TYPES[0], technology: "", description: "", repositoryIds: [] });
     setEditingArtifact(null);
     setIsCreating(true);
   }
@@ -130,6 +138,7 @@ function SystemArtifacts({ systemId }: { systemId: string }) {
       type: artifact.type,
       technology: artifact.technology ?? "",
       description: artifact.description ?? "",
+      repositoryIds: artifact.repositories?.map((r) => r.repositoryId) ?? [],
     });
     setIsCreating(false);
     setEditingArtifact(artifact);
@@ -257,6 +266,19 @@ function SystemArtifacts({ systemId }: { systemId: string }) {
           </div>
           <FormField label="Technology" registration={register("technology")} />
           <FormField label="Description" type="textarea" registration={register("description")} />
+          <div className="form-field">
+            <label htmlFor="artifactRepositoryIds">Repositórios</label>
+            {/* follow-up: links this catalog artifact to real Repository row(s) —
+                without this, selecting the artifact in a demand's wizard has
+                nothing for the Developer Agent to clone/branch/commit. */}
+            <select id="artifactRepositoryIds" multiple {...register("repositoryIds")}>
+              {activeRepositories.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.externalReference}
+                </option>
+              ))}
+            </select>
+          </div>
           <button type="submit">Save artifact</button>
         </form>
       </Modal>
@@ -271,6 +293,10 @@ const CSV_COLUMN_ALIASES: Record<keyof SystemArtifactInput, string[]> = {
   type: ["type", "tipo"],
   technology: ["technology", "tecnologia"],
   description: ["description", "descricao", "descrição"],
+  // follow-up: bulk CSV import intentionally doesn't support linking
+  // repositories (no column for it — see SystemsService.createArtifactsBulk)
+  // — no aliases means the lookup never matches a header, matching that.
+  repositoryIds: [],
 };
 
 /** Simple, dependency-free CSV parsing (comma or semicolon) — matches the project's "no complex library unless needed" convention. */

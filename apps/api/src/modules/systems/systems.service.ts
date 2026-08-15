@@ -49,14 +49,26 @@ export class SystemsService {
       ...(search ? { name: { contains: search, mode: "insensitive" as const } } : {}),
     };
     return paginate(
-      (skip, take) => this.prisma.db.systemArtifact.findMany({ where, orderBy: { name: "asc" }, skip, take }),
+      (skip, take) =>
+        this.prisma.db.systemArtifact.findMany({
+          where,
+          orderBy: { name: "asc" },
+          skip,
+          take,
+          include: { repositories: { where: { stAtivo: true } } },
+        }),
       () => this.prisma.db.systemArtifact.count({ where }),
       page,
       pageSize,
     );
   }
 
-  /** spec FR-003: an active SystemArtifact cannot be created under an inactive System. */
+  /**
+   * spec FR-003: an active SystemArtifact cannot be created under an
+   * inactive System. `repositoryIds` (follow-up): links this catalog
+   * artifact to real Repository row(s) — same nested-create pattern as
+   * `ArtifactsService.create` (apps/api/src/modules/artifacts/artifacts.service.ts).
+   */
   async createArtifact(systemId: string, dto: CreateSystemArtifactDto) {
     const system = await this.get(systemId);
     if (!system.stAtivo) {
@@ -64,7 +76,17 @@ export class SystemsService {
         `Cannot create an artifact under inactive System ${systemId}`,
       );
     }
-    return this.prisma.db.systemArtifact.create({ data: { systemId, ...dto } });
+    const { repositoryIds, ...rest } = dto;
+    return this.prisma.db.systemArtifact.create({
+      data: {
+        systemId,
+        ...rest,
+        repositories: repositoryIds
+          ? { create: repositoryIds.map((repositoryId) => ({ repositoryId })) }
+          : undefined,
+      },
+      include: { repositories: { where: { stAtivo: true } } },
+    });
   }
 
   /**
@@ -87,7 +109,19 @@ export class SystemsService {
         if (!dto.name?.trim() || !dto.type?.trim()) {
           throw new Error("name and type are required");
         }
-        await this.prisma.db.systemArtifact.create({ data: { systemId, ...dto } });
+        // follow-up: bulk CSV import doesn't collect repositoryIds (no
+        // column for it) — named fields only, not a `...dto` spread, since
+        // `repositoryIds` isn't a scalar column on SystemArtifact (would
+        // need the nested-create shape `createArtifact` uses instead).
+        await this.prisma.db.systemArtifact.create({
+          data: {
+            systemId,
+            name: dto.name,
+            type: dto.type,
+            technology: dto.technology,
+            description: dto.description,
+          },
+        });
         results.push({ row: index + 1, status: "created", name: dto.name });
       } catch (error) {
         results.push({
@@ -101,9 +135,49 @@ export class SystemsService {
     return results;
   }
 
+  /**
+   * follow-up: `repositoryIds`, when provided, REPLACES the full active set
+   * of linked repositories (not additive) — matches editing a form field,
+   * not appending. The project's soft-delete guard
+   * (`common/prisma/soft-delete.extension.ts`) blocks `delete()`/
+   * `deleteMany()` on every model, so "remove a link" is a `stAtivo: false`
+   * update, not a physical delete — same upsert-then-deactivate pattern
+   * `DemandsService.setSelectedSystemArtifacts` already uses for
+   * `DemandSystemArtifact`.
+   */
   async updateArtifact(id: string, dto: UpdateSystemArtifactDto) {
     await this.getArtifact(id);
-    return this.prisma.db.systemArtifact.update({ where: { id }, data: dto });
+    const { repositoryIds, ...rest } = dto;
+    if (repositoryIds) {
+      const existing = await this.prisma.db.systemArtifactRepository.findMany({
+        where: { systemArtifactId: id },
+      });
+      const desired = new Set(repositoryIds);
+      await this.prisma.db.$transaction([
+        ...existing
+          .filter((link) => !desired.has(link.repositoryId))
+          .map((link) =>
+            this.prisma.db.systemArtifactRepository.update({
+              where: {
+                systemArtifactId_repositoryId: { systemArtifactId: id, repositoryId: link.repositoryId },
+              },
+              data: { stAtivo: false },
+            }),
+          ),
+        ...repositoryIds.map((repositoryId) =>
+          this.prisma.db.systemArtifactRepository.upsert({
+            where: { systemArtifactId_repositoryId: { systemArtifactId: id, repositoryId } },
+            update: { stAtivo: true },
+            create: { systemArtifactId: id, repositoryId },
+          }),
+        ),
+      ]);
+    }
+    return this.prisma.db.systemArtifact.update({
+      where: { id },
+      data: rest,
+      include: { repositories: { where: { stAtivo: true } } },
+    });
   }
 
   private async getArtifact(id: string) {

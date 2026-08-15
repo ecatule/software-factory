@@ -38,6 +38,13 @@ export class CreateSystemArtifactDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  // follow-up: links this catalog artifact to real Repository row(s) —
+  // entered once here, reused by every demand that later selects this
+  // SystemArtifact (see DemandsService.ensureArtifactsForSystemArtifacts).
+  @IsOptional()
+  @IsArray()
+  repositoryIds?: string[];
 }
 
 export class UpdateSystemArtifactDto {
@@ -60,6 +67,10 @@ export class UpdateSystemArtifactDto {
   @IsOptional()
   @IsBoolean()
   stAtivo?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  repositoryIds?: string[];
 }
 
 /** follow-up: bulk import — one row per spreadsheet line, parsed to JSON client-side. */
