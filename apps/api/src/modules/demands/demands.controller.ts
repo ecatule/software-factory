@@ -20,7 +20,6 @@ import { SpecificationsService } from "../specifications/specifications.service"
 import { SpecificationContextService } from "../specifications/specification-context.service";
 import { ArtifactsService } from "../artifacts/artifacts.service";
 import { IncrementsService } from "../increments/increments.service";
-import { ExecutionsService } from "../executions/executions.service";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { DemandsService } from "./demands.service";
 import { CreateDemandDto, ImportDemandDto, UpdateDemandDto } from "./dto/demand.dto";
@@ -47,7 +46,6 @@ export class DemandsController {
     private readonly specificationContextService: SpecificationContextService,
     private readonly artifactsService: ArtifactsService,
     private readonly incrementsService: IncrementsService,
-    private readonly executionsService: ExecutionsService,
     private readonly prisma: PrismaService,
     private readonly promptSpecService: PromptSpecService,
   ) {}
@@ -178,27 +176,28 @@ export class DemandsController {
 
   /**
    * feature 003 FR-017–FR-019 (contracts/increments.md): creates the next
-   * increment (409 if the current one isn't approved yet — FR-018) and
-   * immediately enqueues its first AI round, seeded with the previous
-   * increment's approved specify.md/plan.md by SpecificationContextService.
-   * 202 because the increment itself is created synchronously but the round
-   * it kicks off is asynchronous (Clarifications 2026-08-09).
+   * increment (409 if the current one isn't approved yet — FR-018).
+   *
+   * follow-up: used to also auto-enqueue a `specification_copilot` AI round
+   * right here, seeded with the previous increment's approved
+   * specify.md/plan.md. Removed — since "Enviar para IA" was disabled on the
+   * Especificação Assistida screen (the Software Factory no longer makes
+   * direct LLM calls from this flow), that auto-round never received
+   * anything the analyst typed in the Wizard afterward (its `input` was
+   * always `{}`), so it silently regenerated a version from STALE content —
+   * live-observed to look like "the new increment kept the previous
+   * increment's data" even after the analyst entered new information. The
+   * real path for new Wizard input to become a Spec is manual: "Gerar
+   * Prompt SPEC" → paste into an external AI → "Anexar arquivos prontos" —
+   * which already correctly tags the uploaded version to the current
+   * increment (`SpecificationsService.createVersion`).
    */
   @Post(":id/increments")
   @HttpCode(202)
   @RequirePermission("DEMAND_WRITE")
   async createIncrement(@Param("id") id: string, @Body() dto: CreateIncrementDto) {
     await this.demandsService.get(id);
-    const increment = await this.incrementsService.createNext(id, dto.reason, dto.title);
-
-    const copilotAgent = await this.prisma.db.agent.findFirst({
-      where: { type: "specification_copilot" },
-    });
-    if (copilotAgent) {
-      await this.executionsService.create({ agentId: copilotAgent.id, demandId: id });
-    }
-
-    return increment;
+    return this.incrementsService.createNext(id, dto.reason, dto.title);
   }
 
   /**

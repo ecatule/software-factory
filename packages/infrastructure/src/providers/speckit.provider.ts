@@ -433,6 +433,7 @@ export class SpecKitProvider implements SDDProvider {
       return stdout.trim();
     } catch (error) {
       const cause = error as NodeJS.ErrnoException & {
+        stdout?: string;
         stderr?: string;
         code?: number | string | null;
         signal?: string | null;
@@ -451,10 +452,17 @@ export class SpecKitProvider implements SDDProvider {
       // (often just a stdin warning) twice, and never surfaced WHY the
       // process actually died (timed out vs. crashed vs. a real non-zero
       // exit) — every failure looked identical and undiagnosable.
+      // follow-up: on a non-zero exit, `--output-format json`'s actual error
+      // explanation (auth/usage-limit/API errors) lands on STDOUT, not
+      // stderr (stderr is usually only the harmless stdin warning) — a
+      // real, live-observed failure ("exited with code 1") had nothing but
+      // that warning in stderr, hiding the real reason entirely.
       const reason = cause.killed
         ? `killed by signal ${cause.signal ?? "unknown"} — likely hit the ${this.timeoutMs}ms timeout`
         : `exited with code ${cause.code ?? "unknown"}`;
-      const detail = cause.stderr?.trim() || cause.message;
+      const stdoutDetail = cause.stdout?.trim();
+      const stderrDetail = cause.stderr?.trim();
+      const detail = [stdoutDetail, stderrDetail].filter(Boolean).join(" | ") || cause.message;
       throw new Error(`SDD stage "${stageLabel}" failed (${reason}): ${detail}`);
     } finally {
       if (input.executionId) this.activeProcesses.delete(input.executionId);

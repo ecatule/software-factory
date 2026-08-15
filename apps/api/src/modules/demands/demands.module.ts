@@ -5,7 +5,6 @@ import { WorkflowsModule } from "../workflows/workflows.module";
 import { SpecificationsModule } from "../specifications/specifications.module";
 import { ArtifactsModule } from "../artifacts/artifacts.module";
 import { IncrementsModule } from "../increments/increments.module";
-import { ExecutionsModule } from "../executions/executions.module";
 import { DemandsController } from "./demands.controller";
 import { DemandsService } from "./demands.service";
 import { PromptSpecService } from "./prompt-spec.service";
@@ -18,7 +17,6 @@ import { PromptSpecService } from "./prompt-spec.service";
     SpecificationsModule,
     ArtifactsModule,
     IncrementsModule,
-    ExecutionsModule,
   ],
   controllers: [DemandsController],
   providers: [DemandsService, PromptSpecService],
