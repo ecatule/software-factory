@@ -115,17 +115,11 @@ export function NavShell({ children }: PropsWithChildren) {
         >
           <div
             className={cn(
-              "flex h-14 items-center gap-2 border-b border-border px-3",
+              "flex h-14 items-center justify-between gap-2 border-b border-border px-3",
               collapsed && "flex-col justify-center gap-1.5 px-0 py-2",
             )}
           >
-            {collapsed ? (
-              <Logo variant="icon" height={28} />
-            ) : (
-              <span className="min-w-0 flex-1">
-                <Logo variant="full" height={22} />
-              </span>
-            )}
+            <Logo variant={collapsed ? "icon" : "full"} height={28} />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

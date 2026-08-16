@@ -10,8 +10,9 @@ import {
   ListChecks,
   type LucideIcon,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart } from "@/components/ui/bar-chart";
+import { AreaChart } from "@/components/ui/area-chart";
 import { cn } from "@/lib/utils";
 import { useDashboardSummary } from "../services/useDashboardSummary";
 
@@ -70,6 +71,20 @@ export function Dashboard() {
   return (
     <div className="flex flex-col gap-8">
       <h1 className="text-2xl font-bold tracking-tight text-foreground">Dashboard</h1>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Atividade dos últimos 7 dias</CardTitle>
+          <CardDescription>Total de ações registradas por dia em todo o sistema</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2">
+          <p className="text-4xl font-bold tracking-tight text-foreground">
+            {data.dailyActivity.reduce((sum, d) => sum + d.count, 0)}
+            <span className="ml-2 text-sm font-normal text-muted-foreground">ações nos últimos 7 dias</span>
+          </p>
+          <AreaChart data={data.dailyActivity.map((d) => ({ name: d.label, value: d.count }))} />
+        </CardContent>
+      </Card>
 
       <section className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
         {kpis.map((kpi) => (

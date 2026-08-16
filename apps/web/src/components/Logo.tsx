@@ -1,49 +1,49 @@
-import logoUrl from "@/assets/logo.png";
+import logoFullUrl from "@/assets/logo-full.png";
+import logoIconUrl from "@/assets/logo-icon.png";
 import { cn } from "@/lib/utils";
 
-// follow-up: the source PNG (apps/web/src/assets/logo.png, 1376×768) has no
-// alpha channel — it's a flat white background with a faint decorative
-// watermark pattern behind the mark, not real transparency. These are the
-// pixel-measured bounding boxes of just the actual ink (navy + cyan),
-// computed once (see conversation) so the logo can be cropped via CSS
-// `background-position`/`background-size` without re-encoding the PNG.
-const ORIGINAL = { width: 1376, height: 768 };
-const FULL_BBOX = { x: 62, y: 243, width: 1253, height: 274 };
-const ICON_BBOX = { x: 62, y: 243, width: 273, height: 274 };
+// follow-up: these are pre-cropped, pre-resized exports (via `sharp`) of the
+// source PNG (apps/web/src/assets/logo.png) — NOT the same file scaled at
+// runtime via CSS `background-size`. An earlier version cropped/scaled the
+// original 1376×768 source live in the browser (background-position math);
+// visually it was correctly cropped (verified via screenshot) but looked
+// soft/"distorted" at the small on-screen size because the browser was
+// downscaling ~9x at render time. Pre-resizing once, offline, at ~4x the
+// largest actual on-screen height (Lanczos resampling) fixes that — the
+// browser now does a much gentler, higher-quality downscale (or none at
+// all on standard-DPI screens). Source crop coordinates (pixel-measured on
+// the 1376×768 original): full lockup {x:21,y:220,w:1334,h:305}, icon-only
+// {x:21,y:220,w:260,h:305} — kept here only as a reference if the source
+// logo is ever replaced and these need regenerating.
+const ASPECT = { full: 612 / 140, icon: 119 / 140 };
 
 interface LogoProps {
   /** "full" = icon + "DevFactoryAI" wordmark. "icon" = just the mark (collapsed sidebar). */
   variant?: "full" | "icon";
-  /** Rendered height in px — width follows the cropped region's own aspect ratio. */
+  /** Rendered height in px — width follows the asset's own aspect ratio. */
   height?: number;
   className?: string;
 }
 
 /**
  * follow-up: the logo's ink is dark navy, invisible against a dark-mode
- * background — wrapped in a light chip (`dark:bg-white`) so it stays
- * legible in both themes instead of attempting to recolor the source PNG.
+ * background — `backgroundColor: white` on the img itself keeps it legible
+ * in both themes (the source has no alpha channel; a permanent white
+ * backing is invisible in light mode anyway, since the surrounding chrome
+ * is already near-white there).
  */
 export function Logo({ variant = "full", height = 24, className }: LogoProps) {
-  const bbox = variant === "icon" ? ICON_BBOX : FULL_BBOX;
-  const scale = height / bbox.height;
-  const width = Math.round(bbox.width * scale);
+  const src = variant === "icon" ? logoIconUrl : logoFullUrl;
+  const width = Math.round(height * ASPECT[variant]);
 
   return (
-    <span className={cn("inline-flex items-center rounded-md dark:bg-white dark:p-1", className)}>
-      <span
-        role="img"
-        aria-label="DevFactoryAI"
-        style={{
-          display: "block",
-          width,
-          height,
-          backgroundImage: `url(${logoUrl})`,
-          backgroundRepeat: "no-repeat",
-          backgroundSize: `${Math.round(ORIGINAL.width * scale)}px ${Math.round(ORIGINAL.height * scale)}px`,
-          backgroundPosition: `-${Math.round(bbox.x * scale)}px -${Math.round(bbox.y * scale)}px`,
-        }}
-      />
-    </span>
+    <img
+      src={src}
+      alt="DevFactoryAI"
+      width={width}
+      height={height}
+      className={cn("inline-block shrink-0 grow-0 rounded-md bg-white object-contain", className)}
+      style={{ width, height }}
+    />
   );
 }

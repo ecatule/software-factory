@@ -833,12 +833,17 @@ model PullRequest {
   updatedBy String?   @map("updated_by") @db.Uuid
   version   Int       @default(1)
 
-  repositoryId      String @map("repository_id") @db.Uuid
-  demandId          String @map("demand_id") @db.Uuid
-  externalReference String @map("external_reference")
+  repositoryId      String  @map("repository_id") @db.Uuid
+  demandId          String  @map("demand_id") @db.Uuid
+  // follow-up: nullable — rows created before this field existed have no
+  // artifact link; `GitService.createPullRequest()` already picks exactly
+  // one `firstArtifact` per PR when creating it, so this mirrors what the
+  // creation flow already does today (not a lossy simplification).
+  artifactId        String? @map("artifact_id") @db.Uuid
+  externalReference String  @map("external_reference")
   title             String
   description       String
-  status            String @default("OPEN")
+  status            String  @default("OPEN")
 
   @@map("pull_requests")
 }

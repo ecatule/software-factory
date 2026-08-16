@@ -172,6 +172,7 @@ export class GitService {
       data: {
         repositoryId: repository.id,
         demandId,
+        artifactId: firstArtifact.id,
         externalReference: pr.externalReference,
         title: `[${demand.externalId}] ${demand.title}`,
         description,

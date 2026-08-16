@@ -109,6 +109,8 @@ export interface DashboardSummary {
   agentsRunning: number;
   byClient: { clientId: string; clientName: string; count: number }[];
   avgTimePerStage: { stage: string; avgHours: number }[];
+  /** Dashboard highlight — total AuditLog activity per day, last 7 days (oldest → newest), zero-filled. */
+  dailyActivity: { date: string; label: string; count: number }[];
 }
 
 export interface Client {

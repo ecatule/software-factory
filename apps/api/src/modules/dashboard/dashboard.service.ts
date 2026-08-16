@@ -5,6 +5,8 @@ const OPEN_STATUSES = ["NEW"];
 const SPECIFICATION_STATUSES = ["SPECIFICATION", "CLARIFICATION", "PLANNING", "CHECKLIST"];
 const DEVELOPMENT_STATUSES = ["DEVELOPMENT", "TESTING", "COMMIT", "PULL_REQUEST"];
 const BLOCKED_STATUSES = ["BLOCKED", "FAILED"];
+const WEEKDAY_LABELS_PT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+const DAILY_ACTIVITY_DAYS = 7;
 
 /** spec 002 FR-006/FR-007/research.md §7: server-side aggregation, never client-side paging. */
 @Injectable()
@@ -21,6 +23,7 @@ export class DashboardService {
       agentsRunning,
       byClientRaw,
       avgTimePerStage,
+      dailyActivity,
     ] = await Promise.all([
       this.prisma.db.demand.groupBy({ by: ["status"], _count: { status: true } }),
       this.prisma.db.demand.findMany({ orderBy: { updatedAt: "desc" }, take: recentLimit }),
@@ -30,6 +33,7 @@ export class DashboardService {
       this.prisma.db.agentExecution.count({ where: { status: "RUNNING" } }),
       this.prisma.db.demand.groupBy({ by: ["clientId"], _count: { clientId: true } }),
       this.computeAvgTimePerStage(),
+      this.computeDailyActivity(),
     ]);
 
     const countByStatuses = (statuses: string[]) =>
@@ -61,6 +65,7 @@ export class DashboardService {
         count: g._count.clientId,
       })),
       avgTimePerStage,
+      dailyActivity,
     };
   }
 
@@ -103,5 +108,43 @@ export class DashboardService {
       stage,
       avgHours: hours.reduce((sum, h) => sum + h, 0) / hours.length,
     }));
+  }
+
+  /**
+   * Dashboard highlight ("destaque"): total system activity per day for the
+   * last 7 days. `AuditLog.occurredAt` is the only field that captures many
+   * distinct real actions across the whole system (not just demand stage
+   * transitions, unlike `computeAvgTimePerStage` above) — no `action`/
+   * `entityType` filter, so every audited action counts. Days with zero
+   * activity are still included (not skipped) so the chart doesn't jump
+   * over a quiet day. Bucketed in JS, same style as `computeAvgTimePerStage`
+   * — no raw SQL/date_trunc anywhere else in this codebase, and at ~231
+   * total AuditLog rows today a 7-day fetch-and-bucket is trivially cheap.
+   */
+  private async computeDailyActivity(): Promise<{ date: string; label: string; count: number }[]> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const start = new Date(today);
+    start.setDate(start.getDate() - (DAILY_ACTIVITY_DAYS - 1));
+
+    const rows = await this.prisma.db.auditLog.findMany({
+      where: { occurredAt: { gte: start } },
+      select: { occurredAt: true },
+    });
+
+    const countByDate = new Map<string, number>();
+    for (const row of rows) {
+      const key = row.occurredAt.toISOString().slice(0, 10);
+      countByDate.set(key, (countByDate.get(key) ?? 0) + 1);
+    }
+
+    const result: { date: string; label: string; count: number }[] = [];
+    for (let i = 0; i < DAILY_ACTIVITY_DAYS; i++) {
+      const day = new Date(start);
+      day.setDate(start.getDate() + i);
+      const key = day.toISOString().slice(0, 10);
+      result.push({ date: key, label: WEEKDAY_LABELS_PT[day.getDay()], count: countByDate.get(key) ?? 0 });
+    }
+    return result;
   }
 }
