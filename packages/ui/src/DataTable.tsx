@@ -35,16 +35,32 @@ export function DataTable<T>({
     return <p className="py-8 text-center text-sm text-muted-foreground">{emptyMessage}</p>;
   }
 
+  // Opt-in: only columns that declare an explicit `size` get a fixed pixel
+  // width (via <colgroup>) — lets a caller align matching columns (e.g. the
+  // same "Ações" column) across several separate <table> instances. Callers
+  // that never set `size` keep the previous auto-layout behavior untouched.
+  const hasExplicitColumnSizes = columns.some((c) => c.size !== undefined);
+
   return (
     <div className="overflow-x-auto rounded-lg border border-border">
-      <table className="w-full text-sm">
+      <table className={cn("w-full text-sm", hasExplicitColumnSizes && "table-fixed")}>
+        {hasExplicitColumnSizes && (
+          <colgroup>
+            {table.getHeaderGroups()[0]?.headers.map((header) => (
+              <col
+                key={header.id}
+                style={header.column.columnDef.size !== undefined ? { width: header.column.columnDef.size } : undefined}
+              />
+            ))}
+          </colgroup>
+        )}
         <thead className="border-b border-border bg-secondary/50">
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
                 <th
                   key={header.id}
-                  className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                  className="truncate px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
                 >
                   {header.isPlaceholder
                     ? null
@@ -62,7 +78,7 @@ export function DataTable<T>({
               className={cn(onRowClick && "cursor-pointer transition-colors hover:bg-accent/50")}
             >
               {row.getVisibleCells().map((cell) => (
-                <td key={cell.id} className="px-4 py-2.5 text-foreground">
+                <td key={cell.id} className="truncate px-4 py-2.5 text-foreground">
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}
                 </td>
               ))}

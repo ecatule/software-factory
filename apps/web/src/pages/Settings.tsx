@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { DataTable, FormField } from "@software-factory/ui";
+import { DataTable, FormField, Modal } from "@software-factory/ui";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/select";
@@ -79,9 +79,8 @@ export function Settings() {
 
       <DataTable columns={columns} data={providers ?? []} isLoading={isLoading} onRowClick={(p) => setSelectedProviderId(p.id)} />
 
-      {selectedProviderId && (
-        <section className="flex flex-col gap-4 rounded-lg border border-border bg-card p-5">
-          <h2 className="text-sm font-semibold text-foreground">Configurations</h2>
+      <Modal title="Configurations" isOpen={selectedProviderId !== null} onClose={() => setSelectedProviderId(null)}>
+        <div className="flex flex-col gap-4">
           <ul className="flex flex-col gap-1.5 text-sm text-foreground">
             {configurations?.items.map((c) => {
               const profile =
@@ -126,8 +125,8 @@ export function Settings() {
               Save configuration
             </Button>
           </form>
-        </section>
-      )}
+        </div>
+      </Modal>
 
       <RolePermissions />
     </div>
@@ -163,8 +162,8 @@ function RolePermissions() {
       <h2 className="text-sm font-semibold text-foreground">Roles &amp; Permissions</h2>
       <DataTable columns={roleColumns} data={roles ?? []} onRowClick={(role) => setSelectedRoleId(role.id)} />
 
-      {selectedRoleId && (
-        <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-5">
+      <Modal title="Permissions" isOpen={selectedRoleId !== null} onClose={() => setSelectedRoleId(null)}>
+        <div className="flex flex-col gap-3">
           <ul className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
             {allPermissions?.map((permission) => (
               <li key={permission.id}>
@@ -184,7 +183,7 @@ function RolePermissions() {
             Save permissions
           </Button>
         </div>
-      )}
+      </Modal>
     </section>
   );
 }
