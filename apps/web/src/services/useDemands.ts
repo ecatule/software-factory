@@ -37,6 +37,43 @@ function buildQuery(filters: DemandFilters): string {
   return params.toString();
 }
 
+/**
+ * Display labels for `Demand.status` (workflow stage keys). Stages are
+ * project-configurable (`WorkflowStage`), so this only covers the default
+ * workflow's known keys — falls back to the raw value for anything custom,
+ * same pattern as `pipelineStageLabel` in useExecutions.ts.
+ */
+export const DEMAND_STATUS_LABELS: Record<string, string> = {
+  NEW: "Nova",
+  SPECIFICATION: "Especificação",
+  CLARIFICATION: "Esclarecimento",
+  PLANNING: "Planejamento",
+  CHECKLIST: "Checklist",
+  DEVELOPMENT: "Desenvolvimento",
+  TESTING: "Testes",
+  COMMIT: "Commit",
+  PULL_REQUEST: "Pull Request",
+  BLOCKED: "Bloqueada",
+  FAILED: "Falhou",
+};
+
+export function demandStatusLabel(status: string): string {
+  return DEMAND_STATUS_LABELS[status] ?? status;
+}
+
+/** Display labels for `Demand.type` — `value` sent to the API stays the raw key. */
+export const DEMAND_TYPE_LABELS: Record<string, string> = {
+  BUG: "Bug",
+  FEATURE: "Funcionalidade",
+  IMPROVEMENT: "Melhoria",
+  TASK: "Tarefa",
+  TECHNICAL_DEBT: "Débito técnico",
+};
+
+export function demandTypeLabel(type: string): string {
+  return DEMAND_TYPE_LABELS[type] ?? type;
+}
+
 /** feature 004 FR-013: enrichment fields added to each list item. */
 export interface EnrichedDemand extends Demand {
   clientName: string;

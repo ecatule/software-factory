@@ -11,18 +11,18 @@ export function Audit() {
   const { data, isLoading } = useAuditList({ entityType: entityType || undefined, page });
 
   const columns: ColumnDef<AuditLogEntry, unknown>[] = [
-    { header: "When", accessorFn: (row) => new Date(row.occurredAt).toLocaleString() },
-    { header: "Actor", accessorKey: "actorUserId" },
-    { header: "Action", accessorKey: "action" },
-    { header: "Entity", accessorFn: (row) => `${row.entityType} ${row.entityId ?? ""}` },
+    { header: "Quando", accessorFn: (row) => new Date(row.occurredAt).toLocaleString() },
+    { header: "Ator", accessorKey: "actorUserId" },
+    { header: "Ação", accessorKey: "action" },
+    { header: "Entidade", accessorFn: (row) => `${row.entityType} ${row.entityId ?? ""}` },
   ];
 
   return (
     <div className="flex flex-col gap-6">
       <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Audit</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Auditoria</h1>
         <Input
-          placeholder="Filter by entity type (e.g. demands)"
+          placeholder="Filtrar por tipo de entidade (ex: demands)"
           value={entityType}
           onChange={(e) => setEntityType(e.target.value)}
           className="max-w-xs"
@@ -33,7 +33,7 @@ export function Audit() {
         columns={columns}
         data={data?.items ?? []}
         isLoading={isLoading}
-        emptyMessage="No audit entries match these filters."
+        emptyMessage="Nenhum registro de auditoria corresponde a estes filtros."
       />
       {data && (
         <Pagination page={data.page} pageSize={data.page_size} total={data.total} onPageChange={setPage} />

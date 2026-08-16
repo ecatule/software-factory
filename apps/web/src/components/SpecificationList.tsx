@@ -1,5 +1,7 @@
-import { useNavigate } from "react-router-dom";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { DataTable } from "@software-factory/ui";
+import type { ColumnDef } from "@tanstack/react-table";
+import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiPost } from "../services/api";
 import type { Specification } from "../services/types";
@@ -10,6 +12,11 @@ interface Props {
 }
 
 const DOCUMENT_TYPES = ["SPEC", "PLAN"] as const;
+
+interface Row {
+  documentType: string;
+  spec: Specification | null;
+}
 
 /**
  * spec 001 User Story 5: which SDD documents exist for this demand so far.
@@ -28,25 +35,31 @@ export function SpecificationList({ demandId, specifications }: Props) {
     navigate(`/specifications/${spec.id}`);
   }
 
-  return (
-    <ul className="flex flex-col gap-2">
-      {specifications?.map((spec) => (
-        <li key={spec.id} className="flex items-center gap-2 text-sm text-foreground">
-          {spec.documentType} — version {spec.currentVersionId ? "current" : "none"}{" "}
-          {/* spec 002 User Story 8 / 003 User Story 1: open the Especificação Assistida workspace. */}
-          <Link to={`/specifications/${spec.id}`} className="text-primary hover:underline">
-            Open in editor
-          </Link>
-        </li>
-      ))}
-      {DOCUMENT_TYPES.filter((t) => !existingTypes.has(t)).map((documentType) => (
-        <li key={documentType} className="flex items-center gap-2 text-sm text-foreground">
-          {documentType} — not started{" "}
-          <Button type="button" variant="outline" size="sm" onClick={() => start(documentType)}>
-            Start
+  const rows: Row[] = [
+    ...(specifications ?? []).map((spec) => ({ documentType: spec.documentType, spec })),
+    ...DOCUMENT_TYPES.filter((t) => !existingTypes.has(t)).map((documentType) => ({ documentType, spec: null })),
+  ];
+
+  const columns: ColumnDef<Row, unknown>[] = [
+    { header: "Documento", accessorKey: "documentType" },
+    { header: "Versão", cell: ({ row }) => (row.original.spec?.currentVersionId ? "atual" : "nenhuma") },
+    {
+      header: "Ações",
+      cell: ({ row }) =>
+        row.original.spec ? (
+          // spec 002 User Story 8 / 003 User Story 1: open the Especificação Assistida workspace.
+          <Button type="button" variant="ghost" size="icon" title="Abrir no editor" aria-label="Abrir no editor" asChild>
+            <Link to={`/specifications/${row.original.spec.id}`}>
+              <Pencil className="size-4" />
+            </Link>
           </Button>
-        </li>
-      ))}
-    </ul>
-  );
+        ) : (
+          <Button type="button" variant="outline" size="sm" onClick={() => start(row.original.documentType)}>
+            Iniciar
+          </Button>
+        ),
+    },
+  ];
+
+  return <DataTable columns={columns} data={rows} emptyMessage="Nenhum documento ainda." />;
 }

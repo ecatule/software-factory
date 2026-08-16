@@ -28,12 +28,12 @@ export function Systems() {
   const { register, handleSubmit, reset } = useForm<SystemFormValues>();
 
   const columns: ColumnDef<System, unknown>[] = [
-    { header: "Name", accessorKey: "name" },
-    { header: "Description", accessorKey: "description" },
+    { header: "Nome", accessorKey: "name" },
+    { header: "Descrição", accessorKey: "description" },
     {
       header: "Status",
       cell: ({ row }) => (
-        <Badge label={row.original.stAtivo ? "ACTIVE" : "INACTIVE"} tone={row.original.stAtivo ? "success" : "neutral"} />
+        <Badge label={row.original.stAtivo ? "ATIVO" : "INATIVO"} tone={row.original.stAtivo ? "success" : "neutral"} />
       ),
     },
   ];
@@ -55,7 +55,7 @@ export function Systems() {
         <h1 className="text-2xl font-bold tracking-tight text-foreground">Sistemas</h1>
         {hasPermission("SYSTEM_WRITE") && (
           <Button type="button" onClick={openCreate}>
-            <Plus /> New system
+            <Plus /> Novo sistema
           </Button>
         )}
       </header>
@@ -65,15 +65,15 @@ export function Systems() {
         data={data?.items ?? []}
         isLoading={isLoading}
         onRowClick={(system) => navigate(`/systems/${system.id}`)}
-        emptyMessage="No systems yet."
+        emptyMessage="Nenhum sistema ainda."
       />
 
-      <Modal title="New system" isOpen={isCreating} onClose={() => setIsCreating(false)}>
+      <Modal title="Novo sistema" isOpen={isCreating} onClose={() => setIsCreating(false)}>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-          <FormField label="Name" registration={register("name", { required: true })} />
-          <FormField label="Description" type="textarea" registration={register("description")} />
+          <FormField label="Nome" registration={register("name", { required: true })} />
+          <FormField label="Descrição" type="textarea" registration={register("description")} />
           <Button type="submit" className="self-start">
-            Create
+            Criar
           </Button>
         </form>
       </Modal>

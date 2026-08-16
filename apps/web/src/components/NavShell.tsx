@@ -48,30 +48,30 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Cadastros",
     items: [
-      { label: "Clients", to: "/clients", icon: Building2 },
-      { label: "Projects", to: "/projects", icon: FolderKanban },
+      { label: "Clientes", to: "/clients", icon: Building2 },
+      { label: "Projetos", to: "/projects", icon: FolderKanban },
       { label: "Sistemas", to: "/systems", icon: Boxes, permission: "SYSTEM_READ" },
-      { label: "Technologies", to: "/technologies", icon: Cpu },
-      { label: "Repositories", to: "/repositories", icon: GitBranch },
+      { label: "Tecnologias", to: "/technologies", icon: Cpu },
+      { label: "Repositórios", to: "/repositories", icon: GitBranch },
     ],
   },
   {
     label: "Trabalho",
     items: [
-      { label: "Demands", to: "/demands", icon: ClipboardList },
+      { label: "Demandas", to: "/demands", icon: ClipboardList },
       { label: "Workspaces", to: "/workspaces", icon: FolderOpen },
-      { label: "Artifacts", to: "/artifacts", icon: Package },
-      { label: "Agents", to: "/agents", icon: Bot },
-      { label: "Executions", to: "/executions", icon: PlayCircle },
-      { label: "Tests", to: "/tests", icon: FlaskConical },
+      { label: "Artefatos", to: "/artifacts", icon: Package },
+      { label: "Agentes", to: "/agents", icon: Bot },
+      { label: "Execuções", to: "/executions", icon: PlayCircle },
+      { label: "Testes", to: "/tests", icon: FlaskConical },
     ],
   },
   {
     label: "Governança",
     items: [
-      { label: "Git Activity", to: "/git", icon: Activity },
-      { label: "Audit", to: "/audit", icon: ShieldCheck, permission: "AUDIT_READ" },
-      { label: "Settings", to: "/settings", icon: SettingsIcon, roles: ["admin"] },
+      { label: "Atividade do Git", to: "/git", icon: Activity },
+      { label: "Auditoria", to: "/audit", icon: ShieldCheck, permission: "AUDIT_READ" },
+      { label: "Configurações", to: "/settings", icon: SettingsIcon, roles: ["admin"] },
     ],
   },
 ];
@@ -189,7 +189,7 @@ export function NavShell({ children }: PropsWithChildren) {
           <header className="flex h-14 shrink-0 items-center justify-end gap-3 border-b border-border bg-card px-6">
             <span className="text-sm text-muted-foreground">{user?.email}</span>
             <Button type="button" variant="outline" size="sm" onClick={logout}>
-              Sign out
+              Sair
             </Button>
           </header>
           <main className="relative flex-1 overflow-y-auto bg-background p-6">

@@ -30,10 +30,14 @@ export function Technologies() {
   const { register, handleSubmit, reset } = useForm<TechnologyFormValues>();
 
   const columns: ColumnDef<Technology, unknown>[] = [
-    { header: "Name", accessorKey: "name" },
-    { header: "Category", accessorKey: "category" },
-    { header: "Version", accessorKey: "techVersion" },
-    { header: "Status", accessorKey: "status" },
+    { header: "Nome", accessorKey: "name" },
+    { header: "Categoria", accessorKey: "category" },
+    { header: "Versão", accessorKey: "techVersion" },
+    {
+      header: "Status",
+      cell: ({ row }) =>
+        row.original.status === "ACTIVE" ? "Ativo" : row.original.status === "INACTIVE" ? "Inativo" : row.original.status,
+    },
   ];
 
   function openCreate() {
@@ -65,9 +69,9 @@ export function Technologies() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Technologies</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Tecnologias</h1>
         <Button type="button" onClick={openCreate}>
-          <Plus /> New technology
+          <Plus /> Nova tecnologia
         </Button>
       </header>
 
@@ -76,11 +80,11 @@ export function Technologies() {
         data={data?.items ?? []}
         isLoading={isLoading}
         onRowClick={openEdit}
-        emptyMessage="No technologies yet — create one to get started."
+        emptyMessage="Nenhuma tecnologia ainda — crie uma para começar."
       />
 
       <Modal
-        title={editing ? "Edit technology" : "New technology"}
+        title={editing ? "Editar tecnologia" : "Nova tecnologia"}
         isOpen={isCreating || editing !== null}
         onClose={() => {
           setIsCreating(false);
@@ -88,21 +92,21 @@ export function Technologies() {
         }}
       >
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-          <FormField label="Name" registration={register("name", { required: true })} />
-          <FormField label="Category" registration={register("category", { required: true })} />
-          <FormField label="Version" registration={register("techVersion")} />
-          <FormField label="Description" type="textarea" registration={register("description")} />
+          <FormField label="Nome" registration={register("name", { required: true })} />
+          <FormField label="Categoria" registration={register("category", { required: true })} />
+          <FormField label="Versão" registration={register("techVersion")} />
+          <FormField label="Descrição" type="textarea" registration={register("description")} />
           <div className="flex flex-col gap-1.5">
             <label htmlFor="status" className="text-sm font-medium text-foreground">
               Status
             </label>
             <NativeSelect id="status" {...register("status")}>
-              <option value="ACTIVE">Active</option>
-              <option value="INACTIVE">Inactive</option>
+              <option value="ACTIVE">Ativo</option>
+              <option value="INACTIVE">Inativo</option>
             </NativeSelect>
           </div>
           <Button type="submit" className="self-start">
-            Save
+            Salvar
           </Button>
         </form>
       </Modal>

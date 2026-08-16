@@ -9,6 +9,28 @@ export interface ArtifactFile {
   reason: string | null;
 }
 
+/** display labels for `Artifact.status` — underlying value (sent/filtered on) stays untouched. */
+export const ARTIFACT_STATUS_LABELS: Record<string, string> = {
+  PLANNED: "Planejado",
+  IMPLEMENTED: "Implementado",
+};
+
+export function artifactStatusLabel(status: string): string {
+  return ARTIFACT_STATUS_LABELS[status] ?? status;
+}
+
+/** display labels for `ArtifactFile.changeType`. */
+export const CHANGE_TYPE_LABELS: Record<ArtifactFile["changeType"], string> = {
+  MODIFIED: "Modificado",
+  ADDED: "Adicionado",
+  REMOVED: "Removido",
+  DISCOVERED: "Descoberto",
+};
+
+export function changeTypeLabel(changeType: ArtifactFile["changeType"]): string {
+  return CHANGE_TYPE_LABELS[changeType] ?? changeType;
+}
+
 export function useArtifactsList(page: number) {
   return useQuery({
     queryKey: ["artifacts", { page }],

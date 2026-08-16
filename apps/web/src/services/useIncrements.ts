@@ -11,6 +11,16 @@ export interface Increment {
   baseSpecificationVersionId: string | null;
 }
 
+/** display labels for `Increment.status` — underlying value stays untouched. */
+export const INCREMENT_STATUS_LABELS: Record<string, string> = {
+  OPEN: "Aberto",
+  COMPLETED: "Concluído",
+};
+
+export function incrementStatusLabel(status: string): string {
+  return INCREMENT_STATUS_LABELS[status] ?? status;
+}
+
 export function useIncrementsList(demandId: string) {
   return useQuery({
     queryKey: ["demand", demandId, "increments"],

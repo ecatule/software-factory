@@ -37,6 +37,19 @@ export function pipelineStageLabel(stage: string | null): string | null {
   return PIPELINE_STAGE_LABELS[stage] ?? stage;
 }
 
+/** human-readable labels for `Execution.status` — display only, never touches the underlying value. */
+export const EXECUTION_STATUS_LABELS: Record<string, string> = {
+  QUEUED: "Na fila",
+  RUNNING: "Em execução",
+  COMPLETED: "Concluída",
+  FAILED: "Falhou",
+  CANCELLED: "Cancelada",
+};
+
+export function executionStatusLabel(status: string): string {
+  return EXECUTION_STATUS_LABELS[status] ?? status;
+}
+
 /** feature 003 (research.md §10): polls a single execution, same POLL_INTERVAL_MS convention as useDemandPolling. */
 const POLL_INTERVAL_MS = 2000;
 const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "CANCELLED"]);

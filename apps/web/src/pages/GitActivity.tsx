@@ -5,6 +5,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { ArrowUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
+  prStatusLabel,
   useBranchesList,
   useCommitsList,
   usePullRequestsList,
@@ -75,14 +76,18 @@ export function GitActivity() {
 
   const pullRequestColumns: ColumnDef<PullRequestItem, unknown>[] = [
     { header: "PR", cell: ({ row }) => `#${row.original.externalReference}` },
-    { header: "Status", size: TYPE_COLUMN_SIZE, cell: ({ row }) => <Badge label={row.original.status} /> },
+    {
+      header: "Status",
+      size: TYPE_COLUMN_SIZE,
+      cell: ({ row }) => <Badge label={prStatusLabel(row.original.status)} />,
+    },
     ...artifactColumns<PullRequestItem>(),
     actionsColumn<PullRequestItem>(),
   ];
 
   return (
     <div className="flex flex-col gap-8">
-      <h1 className="text-2xl font-bold tracking-tight text-foreground">Git Activity</h1>
+      <h1 className="text-2xl font-bold tracking-tight text-foreground">Atividade do Git</h1>
 
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Branches</h2>
@@ -90,7 +95,7 @@ export function GitActivity() {
           columns={branchColumns}
           data={branches?.items ?? []}
           isLoading={branchesLoading}
-          emptyMessage="No branches yet."
+          emptyMessage="Nenhuma branch ainda."
         />
         {branches && (
           <Pagination
@@ -108,7 +113,7 @@ export function GitActivity() {
           columns={commitColumns}
           data={commits?.items ?? []}
           isLoading={commitsLoading}
-          emptyMessage="No commits yet."
+          emptyMessage="Nenhum commit ainda."
         />
         {commits && (
           <Pagination
@@ -126,7 +131,7 @@ export function GitActivity() {
           columns={pullRequestColumns}
           data={pullRequests?.items ?? []}
           isLoading={pullRequestsLoading}
-          emptyMessage="No pull requests yet."
+          emptyMessage="Nenhum pull request ainda."
         />
         {pullRequests && (
           <Pagination

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { DataTable, Modal, Pagination } from "@software-factory/ui";
 import type { ColumnDef } from "@tanstack/react-table";
-import { useWorkspaceTree, useWorkspacesList } from "../services/useWorkspaces";
+import { useWorkspaceTree, useWorkspacesList, workspaceStatusLabel } from "../services/useWorkspaces";
 import type { DemandWorkspace } from "../services/types";
 
 /** spec User Story 6: browse demand workspaces across the platform. */
@@ -12,8 +12,8 @@ export function Workspaces() {
   const { data: tree } = useWorkspaceTree(openWorkspaceId);
 
   const columns: ColumnDef<DemandWorkspace, unknown>[] = [
-    { header: "Path", accessorKey: "path" },
-    { header: "Status", accessorKey: "status" },
+    { header: "Caminho", accessorKey: "path" },
+    { header: "Status", cell: ({ row }) => workspaceStatusLabel(row.original.status) },
   ];
 
   return (
@@ -24,13 +24,13 @@ export function Workspaces() {
         data={data?.items ?? []}
         isLoading={isLoading}
         onRowClick={(workspace) => setOpenWorkspaceId(workspace.id)}
-        emptyMessage="No workspaces created yet."
+        emptyMessage="Nenhum workspace criado ainda."
       />
       {data && (
         <Pagination page={data.page} pageSize={data.page_size} total={data.total} onPageChange={setPage} />
       )}
 
-      <Modal title="Workspace tree" isOpen={openWorkspaceId !== null} onClose={() => setOpenWorkspaceId(null)}>
+      <Modal title="Árvore do workspace" isOpen={openWorkspaceId !== null} onClose={() => setOpenWorkspaceId(null)}>
         {tree ? (
           <div className="flex flex-col gap-4">
             <div>
@@ -46,14 +46,14 @@ export function Workspaces() {
               <ul className="flex flex-col gap-1 text-sm text-muted-foreground">
                 {tree.artefatos.map((a) => (
                   <li key={a.artifact}>
-                    {a.artifact} ({a.files.length} files)
+                    {a.artifact} ({a.files.length} arquivo(s))
                   </li>
                 ))}
               </ul>
             </div>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">Loading tree…</p>
+          <p className="text-sm text-muted-foreground">Carregando árvore…</p>
         )}
       </Modal>
     </div>

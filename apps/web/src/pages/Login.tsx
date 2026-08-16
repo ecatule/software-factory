@@ -12,9 +12,9 @@ export function Login() {
   return (
     <div className="flex h-full min-h-screen flex-col items-center justify-center gap-4 bg-background text-center">
       <Logo variant="full" height={36} />
-      <p className="text-muted-foreground">Sign in with your organizational identity to continue.</p>
+      <p className="text-muted-foreground">Entre com sua identidade organizacional para continuar.</p>
       <Button type="button" size="lg" onClick={() => login(redirect)}>
-        Sign in
+        Entrar
       </Button>
     </div>
   );

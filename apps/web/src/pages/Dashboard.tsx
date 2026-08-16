@@ -15,6 +15,7 @@ import { BarChart } from "@/components/ui/bar-chart";
 import { AreaChart } from "@/components/ui/area-chart";
 import { cn } from "@/lib/utils";
 import { useDashboardSummary } from "../services/useDashboardSummary";
+import { demandStatusLabel } from "../services/useDemands";
 
 const BUCKET_STATUSES: Record<string, string> = {
   open: "NEW",
@@ -28,44 +29,44 @@ export function Dashboard() {
   const navigate = useNavigate();
   const { data, isLoading, isError } = useDashboardSummary();
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">Loading dashboard…</p>;
-  if (isError || !data) return <p className="text-sm text-destructive">Failed to load dashboard.</p>;
+  if (isLoading) return <p className="text-sm text-muted-foreground">Carregando dashboard…</p>;
+  if (isError || !data) return <p className="text-sm text-destructive">Falha ao carregar o dashboard.</p>;
 
   function goToDemands(query: string) {
     navigate(`/demands?${query}`);
   }
 
   const kpis: { label: string; value: number; icon: LucideIcon; query: string; accent?: string }[] = [
-    { label: "Total demands", value: data.totals.all, icon: ListChecks, query: "" },
-    { label: "Open", value: data.totals.open, icon: CircleDot, query: `status_in=${BUCKET_STATUSES.open}` },
+    { label: "Total de demandas", value: data.totals.all, icon: ListChecks, query: "" },
+    { label: "Abertas", value: data.totals.open, icon: CircleDot, query: `status_in=${BUCKET_STATUSES.open}` },
     {
-      label: "In specification",
+      label: "Em especificação",
       value: data.totals.inSpecification,
       icon: FileText,
       query: `status_in=${BUCKET_STATUSES.inSpecification}`,
     },
     {
-      label: "In development",
+      label: "Em desenvolvimento",
       value: data.totals.inDevelopment,
       icon: Code2,
       query: `status_in=${BUCKET_STATUSES.inDevelopment}`,
     },
     {
-      label: "Blocked",
+      label: "Bloqueadas",
       value: data.totals.blocked,
       icon: AlertTriangle,
       query: `status_in=${BUCKET_STATUSES.blocked}`,
       accent: "text-destructive",
     },
-    { label: "PRs open", value: data.pullRequestsOpen, icon: GitPullRequest, query: "pr_status=OPEN" },
+    { label: "PRs abertos", value: data.pullRequestsOpen, icon: GitPullRequest, query: "pr_status=OPEN" },
     {
-      label: "Tests failing",
+      label: "Testes falhando",
       value: data.testsFailing,
       icon: FlaskConical,
       query: "has_failing_tests=true",
       accent: data.testsFailing > 0 ? "text-destructive" : undefined,
     },
-    { label: "Agents running", value: data.agentsRunning, icon: Bot, query: "agent_status=RUNNING" },
+    { label: "Agentes em execução", value: data.agentsRunning, icon: Bot, query: "agent_status=RUNNING" },
   ];
 
   return (
@@ -107,7 +108,7 @@ export function Dashboard() {
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Demands by client</CardTitle>
+            <CardTitle>Demandas por cliente</CardTitle>
           </CardHeader>
           <CardContent>
             <BarChart
@@ -122,7 +123,7 @@ export function Dashboard() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Demands by stage</CardTitle>
+            <CardTitle>Demandas por etapa</CardTitle>
           </CardHeader>
           <CardContent>
             <BarChart
@@ -134,7 +135,7 @@ export function Dashboard() {
 
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Average time per stage</CardTitle>
+            <CardTitle>Tempo médio por etapa</CardTitle>
           </CardHeader>
           <CardContent>
             <BarChart
@@ -148,7 +149,7 @@ export function Dashboard() {
 
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Recently updated demands
+          Demandas atualizadas recentemente
         </h2>
         <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-card">
           {data.recentDemands.map((demand) => (
@@ -158,7 +159,7 @@ export function Dashboard() {
                 className="flex items-center justify-between px-4 py-2.5 text-sm text-foreground transition-colors hover:bg-accent/50"
               >
                 <span>{demand.title}</span>
-                <span className="text-muted-foreground">{demand.status}</span>
+                <span className="text-muted-foreground">{demandStatusLabel(demand.status)}</span>
               </Link>
             </li>
           ))}

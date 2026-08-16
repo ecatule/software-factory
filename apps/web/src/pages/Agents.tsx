@@ -17,8 +17,8 @@ export function Agents() {
   const { register, handleSubmit, reset } = useForm<TriggerExecutionInput>();
 
   const columns: ColumnDef<Agent, unknown>[] = [
-    { header: "Name", accessorKey: "name" },
-    { header: "Type", accessorKey: "type" },
+    { header: "Nome", accessorKey: "name" },
+    { header: "Tipo", accessorKey: "type" },
   ];
 
   async function onSubmit(values: TriggerExecutionInput) {
@@ -28,18 +28,18 @@ export function Agents() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-bold tracking-tight text-foreground">Agents</h1>
+      <h1 className="text-2xl font-bold tracking-tight text-foreground">Agentes</h1>
       <DataTable columns={columns} data={agents ?? []} isLoading={isLoading} />
 
       <section className="flex flex-col gap-4 rounded-lg border border-border bg-card p-5">
-        <h2 className="text-sm font-semibold text-foreground">Trigger an execution</h2>
+        <h2 className="text-sm font-semibold text-foreground">Disparar uma execução</h2>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <label htmlFor="agentId" className="text-sm font-medium text-foreground">
-              Agent
+              Agente
             </label>
             <NativeSelect id="agentId" {...register("agentId", { required: true })}>
-              <option value="">Select an agent…</option>
+              <option value="">Selecione um agente…</option>
               {agents?.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}
@@ -49,10 +49,10 @@ export function Agents() {
           </div>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="demandId" className="text-sm font-medium text-foreground">
-              Demand
+              Demanda
             </label>
             <NativeSelect id="demandId" {...register("demandId", { required: true })}>
-              <option value="">Select a demand…</option>
+              <option value="">Selecione uma demanda…</option>
               {demands?.items.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.title}
@@ -62,10 +62,10 @@ export function Agents() {
           </div>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="pipelineStage" className="text-sm font-medium text-foreground">
-              Pipeline stage (optional — for the developer agent, always runs "implement")
+              Etapa do pipeline (opcional — para o agente developer, sempre roda "implement")
             </label>
             <NativeSelect id="pipelineStage" {...register("pipelineStage")}>
-              <option value="">Default (specify)</option>
+              <option value="">Padrão (specify)</option>
               {PIPELINE_STAGES.map((stage) => (
                 <option key={stage} value={stage}>
                   {stage}
@@ -74,7 +74,7 @@ export function Agents() {
             </NativeSelect>
           </div>
           <Button type="submit" className="self-start">
-            Trigger
+            Disparar
           </Button>
         </form>
       </section>

@@ -34,7 +34,7 @@ export function Modal({ title, isOpen, onClose, children, className }: ModalProp
             <Dialog.Close asChild>
               <button
                 type="button"
-                aria-label="Close"
+                aria-label="Fechar"
                 className="grid size-7 place-items-center rounded-md bg-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
               >
                 <X className="size-4" />

@@ -23,10 +23,10 @@ export function Pagination({ page, pageSize, total, onPageChange }: PaginationPr
         onClick={() => onPageChange(page - 1)}
         className={cn(buttonClass)}
       >
-        <ChevronLeft className="size-4" /> Previous
+        <ChevronLeft className="size-4" /> Anterior
       </button>
       <span className="text-sm text-muted-foreground">
-        Page {page} of {totalPages} ({total} total)
+        Página {page} de {totalPages} ({total} no total)
       </span>
       <button
         type="button"
@@ -34,7 +34,7 @@ export function Pagination({ page, pageSize, total, onPageChange }: PaginationPr
         onClick={() => onPageChange(page + 1)}
         className={cn(buttonClass)}
       >
-        Next <ChevronRight className="size-4" />
+        Próxima <ChevronRight className="size-4" />
       </button>
     </div>
   );

@@ -13,12 +13,15 @@ import { useClientsList } from "../services/useClients";
 import { useProjectsList } from "../services/useProjects";
 import { useAgentsList } from "../services/useAgents";
 import {
+  demandStatusLabel,
+  demandTypeLabel,
   useCreateDemand,
   useDemandsList,
   useImportDemand,
   type CreateDemandInput,
   type EnrichedDemand,
 } from "../services/useDemands";
+import { prStatusLabel } from "../services/useGitActivity";
 
 const DEMAND_TYPES = ["BUG", "FEATURE", "IMPROVEMENT", "TASK", "TECHNICAL_DEBT"];
 
@@ -68,30 +71,30 @@ export function Demands() {
   const importForm = useForm<ImportFormValues>();
 
   const columns: ColumnDef<EnrichedDemand, unknown>[] = [
-    { header: "External ID", accessorKey: "externalId" },
-    { header: "Title", accessorKey: "title" },
-    { header: "Client", accessorKey: "clientName" },
-    { header: "Project", accessorKey: "projectName" },
-    { header: "Type", accessorKey: "type" },
-    { header: "Priority", accessorKey: "priority" },
-    { header: "Status", cell: ({ row }) => <Badge label={row.original.status} /> },
+    { header: "ID externo", accessorKey: "externalId" },
+    { header: "Título", accessorKey: "title" },
+    { header: "Cliente", accessorKey: "clientName" },
+    { header: "Projeto", accessorKey: "projectName" },
+    { header: "Tipo", cell: ({ row }) => demandTypeLabel(row.original.type) },
+    { header: "Prioridade", accessorKey: "priority" },
+    { header: "Status", cell: ({ row }) => <Badge label={demandStatusLabel(row.original.status)} /> },
     {
-      header: "Increment",
+      header: "Incremento",
       cell: ({ row }) => row.original.currentIncrement?.number ?? "—",
     },
     {
-      header: "Agent",
+      header: "Agente",
       cell: ({ row }) => row.original.currentAgent?.name ?? "—",
     },
     {
       header: "PR",
       cell: ({ row }) =>
         row.original.latestPullRequest
-          ? `${row.original.latestPullRequest.externalReference} (${row.original.latestPullRequest.status})`
+          ? `${row.original.latestPullRequest.externalReference} (${prStatusLabel(row.original.latestPullRequest.status)})`
           : "—",
     },
     {
-      header: "Updated",
+      header: "Atualizado em",
       cell: ({ row }) => new Date(row.original.updatedAt).toLocaleString(),
     },
   ];
@@ -122,7 +125,7 @@ export function Demands() {
         const message = (error.body as { message?: string })?.message;
         setCreateError(message ?? `Request failed (${error.status})`);
       } else {
-        setCreateError("Unexpected error creating the demand.");
+        setCreateError("Erro inesperado ao criar a demanda.");
       }
     }
   }
@@ -136,14 +139,14 @@ export function Demands() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Demands</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Demandas</h1>
         {hasPermission("DEMAND_WRITE") && (
           <div className="flex items-center gap-2">
             <Button type="button" variant="outline" onClick={() => setIsImporting(true)}>
               <Download /> Importar do Monday
             </Button>
             <Button type="button" onClick={openCreate}>
-              <Plus /> New demand
+              <Plus /> Nova demanda
             </Button>
           </div>
         )}
@@ -151,15 +154,15 @@ export function Demands() {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <NativeSelect value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">All statuses</option>
-          <option value="NEW">NEW</option>
-          <option value="SPECIFICATION">SPECIFICATION</option>
-          <option value="DEVELOPMENT">DEVELOPMENT</option>
-          <option value="PULL_REQUEST">PULL_REQUEST</option>
-          <option value="FAILED">FAILED</option>
+          <option value="">Todos os status</option>
+          <option value="NEW">{demandStatusLabel("NEW")}</option>
+          <option value="SPECIFICATION">{demandStatusLabel("SPECIFICATION")}</option>
+          <option value="DEVELOPMENT">{demandStatusLabel("DEVELOPMENT")}</option>
+          <option value="PULL_REQUEST">{demandStatusLabel("PULL_REQUEST")}</option>
+          <option value="FAILED">{demandStatusLabel("FAILED")}</option>
         </NativeSelect>
         <NativeSelect value={clientId} onChange={(e) => setClientId(e.target.value)}>
-          <option value="">All clients</option>
+          <option value="">Todos os clientes</option>
           {clients?.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
@@ -167,7 +170,7 @@ export function Demands() {
           ))}
         </NativeSelect>
         <NativeSelect value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-          <option value="">All projects</option>
+          <option value="">Todos os projetos</option>
           {projects?.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
@@ -175,7 +178,7 @@ export function Demands() {
           ))}
         </NativeSelect>
         <NativeSelect value={agentId} onChange={(e) => setAgentId(e.target.value)}>
-          <option value="">All agents</option>
+          <option value="">Todos os agentes</option>
           {agents?.map((a) => (
             <option key={a.id} value={a.id}>
               {a.name}
@@ -183,23 +186,23 @@ export function Demands() {
           ))}
         </NativeSelect>
         <NativeSelect value={prStatus} onChange={(e) => setPrStatus(e.target.value)}>
-          <option value="">Any PR status</option>
-          <option value="OPEN">OPEN</option>
-          <option value="MERGED">MERGED</option>
-          <option value="CLOSED">CLOSED</option>
+          <option value="">Qualquer status de PR</option>
+          <option value="OPEN">{prStatusLabel("OPEN")}</option>
+          <option value="MERGED">{prStatusLabel("MERGED")}</option>
+          <option value="CLOSED">{prStatusLabel("CLOSED")}</option>
         </NativeSelect>
         <div className="flex items-center gap-2">
           <Input
             type="date"
             value={createdAfter}
             onChange={(e) => setCreatedAfter(e.target.value)}
-            title="Created after"
+            title="Criada após"
           />
           <Input
             type="date"
             value={createdBefore}
             onChange={(e) => setCreatedBefore(e.target.value)}
-            title="Created before"
+            title="Criada antes de"
           />
         </div>
       </div>
@@ -209,7 +212,7 @@ export function Demands() {
         data={data?.items ?? []}
         isLoading={isLoading}
         onRowClick={(demand) => navigate(`/demands/${demand.id}`)}
-        emptyMessage="No demands match these filters."
+        emptyMessage="Nenhuma demanda corresponde a estes filtros."
       />
       {data && (
         <Pagination
@@ -220,36 +223,36 @@ export function Demands() {
         />
       )}
 
-      <Modal title="New demand" isOpen={isCreating} onClose={() => setIsCreating(false)}>
+      <Modal title="Nova demanda" isOpen={isCreating} onClose={() => setIsCreating(false)}>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           {createError && <p className="text-sm font-medium text-destructive">{createError}</p>}
-          <FormField label="External ID" registration={register("externalId", { required: true })} />
-          <FormField label="Origin" registration={register("origin", { required: true })} />
-          <FormField label="Title" registration={register("title", { required: true })} />
+          <FormField label="ID externo" registration={register("externalId", { required: true })} />
+          <FormField label="Origem" registration={register("origin", { required: true })} />
+          <FormField label="Título" registration={register("title", { required: true })} />
           <FormField
-            label="Description"
+            label="Descrição"
             type="textarea"
             registration={register("description", { required: true })}
           />
           <div className="flex flex-col gap-1.5">
             <label htmlFor="type" className="text-sm font-medium text-foreground">
-              Type
+              Tipo
             </label>
             <NativeSelect id="type" {...register("type", { required: true })}>
               {DEMAND_TYPES.map((t) => (
                 <option key={t} value={t}>
-                  {t}
+                  {demandTypeLabel(t)}
                 </option>
               ))}
             </NativeSelect>
           </div>
-          <FormField label="Priority" registration={register("priority", { required: true })} />
+          <FormField label="Prioridade" registration={register("priority", { required: true })} />
           <div className="flex flex-col gap-1.5">
             <label htmlFor="clientId" className="text-sm font-medium text-foreground">
-              Client
+              Cliente
             </label>
             <NativeSelect id="clientId" {...register("clientId", { required: true })}>
-              <option value="">Select a client…</option>
+              <option value="">Selecione um cliente…</option>
               {clients?.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -259,10 +262,10 @@ export function Demands() {
           </div>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="projectId" className="text-sm font-medium text-foreground">
-              Project
+              Projeto
             </label>
             <NativeSelect id="projectId" {...register("projectId", { required: true })}>
-              <option value="">Select a project…</option>
+              <option value="">Selecione um projeto…</option>
               {projects?.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -271,7 +274,7 @@ export function Demands() {
             </NativeSelect>
           </div>
           <Button type="submit" className="self-start">
-            Create
+            Criar
           </Button>
         </form>
       </Modal>
@@ -279,15 +282,15 @@ export function Demands() {
       <Modal title="Importar demanda do Monday" isOpen={isImporting} onClose={() => setIsImporting(false)}>
         <form onSubmit={importForm.handleSubmit(onImport)} className="flex flex-col gap-4">
           <FormField
-            label="Monday ticket ID"
+            label="ID do ticket no Monday"
             registration={importForm.register("externalId", { required: true })}
           />
           <div className="flex flex-col gap-1.5">
             <label htmlFor="importClientId" className="text-sm font-medium text-foreground">
-              Client
+              Cliente
             </label>
             <NativeSelect id="importClientId" {...importForm.register("clientId", { required: true })}>
-              <option value="">Select a client…</option>
+              <option value="">Selecione um cliente…</option>
               {clients?.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -297,10 +300,10 @@ export function Demands() {
           </div>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="importProjectId" className="text-sm font-medium text-foreground">
-              Project
+              Projeto
             </label>
             <NativeSelect id="importProjectId" {...importForm.register("projectId", { required: true })}>
-              <option value="">Select a project…</option>
+              <option value="">Selecione um projeto…</option>
               {projects?.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}

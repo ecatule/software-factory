@@ -45,13 +45,13 @@ export function Projects() {
   const { register, handleSubmit, reset } = useForm<ProjectFormValues>();
 
   const columns: ColumnDef<Project, unknown>[] = [
-    { header: "Name", accessorKey: "name" },
+    { header: "Nome", accessorKey: "name" },
     {
-      header: "Client",
+      header: "Cliente",
       accessorFn: (row) => clients?.find((c) => c.id === row.clientId)?.name ?? row.clientId,
     },
     {
-      header: "Required test suites",
+      header: "Suítes de teste obrigatórias",
       accessorFn: (row) => row.requiredTestSuites.join(", "),
     },
   ];
@@ -104,9 +104,9 @@ export function Projects() {
       // nothing. See AuthContext.tsx for the expired-session root cause.
       if (error instanceof ApiError) {
         const message = (error.body as { message?: string })?.message;
-        setSaveError(message ?? `Request failed (${error.status}). Try reloading the page.`);
+        setSaveError(message ?? `A requisição falhou (${error.status}). Tente recarregar a página.`);
       } else {
-        setSaveError("Unexpected error saving the project.");
+        setSaveError("Erro inesperado ao salvar o projeto.");
       }
     }
   }
@@ -114,10 +114,10 @@ export function Projects() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Projects</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Projetos</h1>
         <div className="flex items-center gap-2">
           <NativeSelect value={clientFilter} onChange={(e) => setClientFilter(e.target.value)} className="w-auto">
-            <option value="">All clients</option>
+            <option value="">Todos os clientes</option>
             {clients?.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -125,7 +125,7 @@ export function Projects() {
             ))}
           </NativeSelect>
           <Button type="button" onClick={openCreate}>
-            <Plus /> New project
+            <Plus /> Novo projeto
           </Button>
         </div>
       </header>
@@ -135,11 +135,11 @@ export function Projects() {
         data={projects ?? []}
         isLoading={isLoading}
         onRowClick={openEdit}
-        emptyMessage="No projects yet — create one under a client."
+        emptyMessage="Nenhum projeto ainda — crie um dentro de um cliente."
       />
 
       <Modal
-        title={editing ? "Edit project" : "New project"}
+        title={editing ? "Editar projeto" : "Novo projeto"}
         isOpen={isCreating || editing !== null}
         onClose={() => {
           setIsCreating(false);
@@ -152,10 +152,10 @@ export function Projects() {
           {!editing && (
             <div className="flex flex-col gap-1.5">
               <label htmlFor="clientId" className="text-sm font-medium text-foreground">
-                Client
+                Cliente
               </label>
               <NativeSelect id="clientId" {...register("clientId", { required: true })}>
-                <option value="">Select a client…</option>
+                <option value="">Selecione um cliente…</option>
                 {clients?.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
@@ -164,9 +164,9 @@ export function Projects() {
               </NativeSelect>
             </div>
           )}
-          <FormField label="Name" registration={register("name", { required: true })} />
+          <FormField label="Nome" registration={register("name", { required: true })} />
           <FormField
-            label="Required test suites (comma-separated)"
+            label="Suítes de teste obrigatórias (separadas por vírgula)"
             registration={register("requiredTestSuites")}
           />
           {editing && (
@@ -179,7 +179,7 @@ export function Projects() {
             </div>
           )}
           <Button type="submit" className="self-start">
-            Save
+            Salvar
           </Button>
         </form>
         {editing && (
@@ -209,7 +209,7 @@ function ProjectTechnologies({ projectId, onSaved }: { projectId: string; onSave
 
   return (
     <section className="mt-6 flex flex-col gap-3 border-t border-border pt-4">
-      <h2 className="text-sm font-semibold text-foreground">Technologies</h2>
+      <h2 className="text-sm font-semibold text-foreground">Tecnologias</h2>
       <ul className="flex flex-col gap-1.5">
         {allTechnologies?.items.map((tech) => (
           <li key={tech.id}>
@@ -232,7 +232,7 @@ function ProjectTechnologies({ projectId, onSaved }: { projectId: string; onSave
         className="self-start"
         onClick={() => setTechnologies.mutate(selected, { onSuccess: onSaved })}
       >
-        Save technologies
+        Salvar tecnologias
       </Button>
     </section>
   );

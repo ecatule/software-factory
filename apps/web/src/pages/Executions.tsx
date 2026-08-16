@@ -4,7 +4,13 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/select";
-import { useExecution, useExecutionsList, pipelineStageLabel, type Execution } from "../services/useExecutions";
+import {
+  executionStatusLabel,
+  pipelineStageLabel,
+  useExecution,
+  useExecutionsList,
+  type Execution,
+} from "../services/useExecutions";
 
 const STATUS_TONE: Record<Execution["status"], "neutral" | "success" | "warning" | "danger"> = {
   QUEUED: "neutral",
@@ -40,7 +46,10 @@ export function Executions() {
   const columns: ColumnDef<Execution, unknown>[] = [
     { header: "Agente", cell: ({ row }) => row.original.agent?.name ?? row.original.agentId },
     { header: "Demanda", cell: ({ row }) => row.original.demandTitle ?? row.original.demandId },
-    { header: "Status", cell: ({ row }) => <Badge label={row.original.status} tone={STATUS_TONE[row.original.status]} /> },
+    {
+      header: "Status",
+      cell: ({ row }) => <Badge label={executionStatusLabel(row.original.status)} tone={STATUS_TONE[row.original.status]} />,
+    },
     {
       header: "Etapa atual",
       cell: ({ row }) =>
@@ -53,15 +62,15 @@ export function Executions() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Executions</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Execuções</h1>
         <div className="flex items-center gap-2">
           <NativeSelect value={status} onChange={(e) => setStatus(e.target.value)} className="w-auto">
-            <option value="">All statuses</option>
-            <option value="QUEUED">QUEUED</option>
-            <option value="RUNNING">RUNNING</option>
-            <option value="COMPLETED">COMPLETED</option>
-            <option value="FAILED">FAILED</option>
-            <option value="CANCELLED">CANCELLED</option>
+            <option value="">Todos os status</option>
+            <option value="QUEUED">{executionStatusLabel("QUEUED")}</option>
+            <option value="RUNNING">{executionStatusLabel("RUNNING")}</option>
+            <option value="COMPLETED">{executionStatusLabel("COMPLETED")}</option>
+            <option value="FAILED">{executionStatusLabel("FAILED")}</option>
+            <option value="CANCELLED">{executionStatusLabel("CANCELLED")}</option>
           </NativeSelect>
           {/* follow-up: replaces the previous auto-polling (2s interval while
               anything was non-terminal) — reverted after feedback, same
@@ -78,17 +87,17 @@ export function Executions() {
         data={data?.items ?? []}
         isLoading={isLoading}
         onRowClick={(row) => setOpenExecutionId(row.id)}
-        emptyMessage="No executions match these filters."
+        emptyMessage="Nenhuma execução corresponde a estes filtros."
       />
       {data && (
         <Pagination page={data.page} pageSize={data.page_size} total={data.total} onPageChange={setPage} />
       )}
 
-      <Modal title="Execution detail" isOpen={openExecutionId !== null} onClose={() => setOpenExecutionId(null)}>
+      <Modal title="Detalhe da execução" isOpen={openExecutionId !== null} onClose={() => setOpenExecutionId(null)}>
         {openExecution.data && (
           <div className="flex flex-col gap-3">
             <p className="flex items-center gap-2">
-              <Badge label={openExecution.data.status} tone={STATUS_TONE[openExecution.data.status]} />
+              <Badge label={executionStatusLabel(openExecution.data.status)} tone={STATUS_TONE[openExecution.data.status]} />
               {openExecution.data.status === "RUNNING" && pipelineStageLabel(openExecution.data.pipelineStage) && (
                 <span className="text-sm text-muted-foreground">
                   — {pipelineStageLabel(openExecution.data.pipelineStage)}
@@ -109,11 +118,11 @@ export function Executions() {
                 {openExecution.data.error}
               </p>
             )}
-            <h3 className="text-sm font-semibold text-foreground">Input</h3>
+            <h3 className="text-sm font-semibold text-foreground">Entrada</h3>
             <pre className="overflow-x-auto rounded-md bg-secondary p-3 text-xs text-foreground">
               {JSON.stringify(openExecution.data.input, null, 2)}
             </pre>
-            <h3 className="text-sm font-semibold text-foreground">Output</h3>
+            <h3 className="text-sm font-semibold text-foreground">Saída</h3>
             <pre className="overflow-x-auto rounded-md bg-secondary p-3 text-xs text-foreground">
               {JSON.stringify(openExecution.data.output, null, 2)}
             </pre>

@@ -17,7 +17,7 @@ import { useProjectsList } from "../services/useProjects";
 function extractErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError) {
     const message = (error.body as { message?: string })?.message;
-    return message ?? `Request failed (${error.status}). Try reloading the page.`;
+    return message ?? `A requisição falhou (${error.status}). Tente recarregar a página.`;
   }
   return fallback;
 }
@@ -60,15 +60,15 @@ export function Repositories() {
   const columns: ColumnDef<Repository, unknown>[] = [
     { header: "Base (org/host)", accessorKey: "externalReference" },
     {
-      header: "Project",
+      header: "Projeto",
       cell: ({ row }) => projectNameById.get(row.original.projectId) ?? row.original.projectId,
     },
-    { header: "Production branch", accessorKey: "productionBranch" },
-    { header: "Homologation branch", accessorKey: "homologationBranch" },
+    { header: "Branch de produção", accessorKey: "productionBranch" },
+    { header: "Branch de homologação", accessorKey: "homologationBranch" },
     {
       header: "Status",
       cell: ({ row }) => (
-        <Badge label={row.original.stAtivo ? "ACTIVE" : "INACTIVE"} tone={row.original.stAtivo ? "success" : "neutral"} />
+        <Badge label={row.original.stAtivo ? "ATIVO" : "INATIVO"} tone={row.original.stAtivo ? "success" : "neutral"} />
       ),
     },
   ];
@@ -90,7 +90,7 @@ export function Repositories() {
       });
       setIsCreating(false);
     } catch (error) {
-      setCreateError(extractErrorMessage(error, "Failed to create repository."));
+      setCreateError(extractErrorMessage(error, "Falha ao criar o repositório."));
     }
   }
 
@@ -112,7 +112,7 @@ export function Repositories() {
       await updateRepository.mutateAsync({ id: editing.id, ...values });
       setEditing(null);
     } catch (error) {
-      setEditError(extractErrorMessage(error, "Failed to save repository."));
+      setEditError(extractErrorMessage(error, "Falha ao salvar o repositório."));
     }
   }
 
@@ -126,16 +126,16 @@ export function Repositories() {
       await updateRepository.mutateAsync({ id: repo.id, stAtivo: !repo.stAtivo });
       setEditing(null);
     } catch (error) {
-      setEditError(extractErrorMessage(error, "Failed to update repository status."));
+      setEditError(extractErrorMessage(error, "Falha ao atualizar o status do repositório."));
     }
   }
 
   return (
     <div className="flex flex-col gap-6">
       <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Repositories</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Repositórios</h1>
         <Button type="button" onClick={openCreate}>
-          <Plus /> New repository
+          <Plus /> Novo repositório
         </Button>
       </header>
       <DataTable
@@ -143,25 +143,25 @@ export function Repositories() {
         data={data?.items ?? []}
         isLoading={isLoading}
         onRowClick={openEdit}
-        emptyMessage="No repositories registered yet."
+        emptyMessage="Nenhum repositório cadastrado ainda."
       />
       {data && (
         <Pagination page={data.page} pageSize={data.page_size} total={data.total} onPageChange={setPage} />
       )}
 
-      <Modal title="New repository" isOpen={isCreating} onClose={() => setIsCreating(false)}>
+      <Modal title="Novo repositório" isOpen={isCreating} onClose={() => setIsCreating(false)}>
         <form onSubmit={createForm.handleSubmit(onCreateSubmit)} className="flex flex-col gap-4">
           {createError && <p className="text-sm font-medium text-destructive">{createError}</p>}
           <div className="flex flex-col gap-1.5">
             <label htmlFor="repo-projectId" className="text-sm font-medium text-foreground">
-              Project
+              Projeto
             </label>
             <select
               id="repo-projectId"
               className={selectClass}
               {...createForm.register("projectId", { required: true })}
             >
-              <option value="">Select a project…</option>
+              <option value="">Selecione um projeto…</option>
               {projects?.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -170,19 +170,19 @@ export function Repositories() {
             </select>
           </div>
           <FormField
-            label="Base (e.g. https://github.com/owner)"
+            label="Base (ex: https://github.com/owner)"
             registration={createForm.register("externalReference", { required: true })}
           />
-          <FormField label="Production branch" registration={createForm.register("productionBranch")} />
-          <FormField label="Homologation branch" registration={createForm.register("homologationBranch")} />
+          <FormField label="Branch de produção" registration={createForm.register("productionBranch")} />
+          <FormField label="Branch de homologação" registration={createForm.register("homologationBranch")} />
           <Button type="submit" disabled={createRepository.isPending} className="self-start">
-            Create
+            Criar
           </Button>
         </form>
       </Modal>
 
       <Modal
-        title={editing ? `Edit repository — ${editing.stAtivo ? "ACTIVE" : "INACTIVE"}` : "Edit repository"}
+        title={editing ? `Editar repositório — ${editing.stAtivo ? "ATIVO" : "INATIVO"}` : "Editar repositório"}
         isOpen={editing !== null}
         onClose={() => setEditing(null)}
       >
@@ -190,7 +190,7 @@ export function Repositories() {
           {editError && <p className="text-sm font-medium text-destructive">{editError}</p>}
           <div className="flex flex-col gap-1.5">
             <label htmlFor="edit-repo-projectId" className="text-sm font-medium text-foreground">
-              Project
+              Projeto
             </label>
             <select id="edit-repo-projectId" className={selectClass} {...register("projectId", { required: true })}>
               {projects?.map((p) => (
@@ -201,19 +201,19 @@ export function Repositories() {
             </select>
           </div>
           <FormField
-            label="Base (e.g. https://github.com/owner)"
+            label="Base (ex: https://github.com/owner)"
             registration={register("externalReference", { required: true })}
           />
-          <FormField label="Production branch" registration={register("productionBranch")} />
-          <FormField label="Homologation branch" registration={register("homologationBranch")} />
+          <FormField label="Branch de produção" registration={register("productionBranch")} />
+          <FormField label="Branch de homologação" registration={register("homologationBranch")} />
           <Button type="submit" className="self-start">
-            Save
+            Salvar
           </Button>
         </form>
         {editing && (
           <div className="mt-4 flex gap-2 border-t border-border pt-4">
             <Button type="button" variant="outline" size="sm" onClick={() => setShowingArtifactsFor(editing.id)}>
-              View linked artifacts
+              Ver artefatos vinculados
             </Button>
             <Button
               type="button"
@@ -222,13 +222,13 @@ export function Repositories() {
               onClick={() => toggleActive(editing)}
               disabled={updateRepository.isPending}
             >
-              {editing.stAtivo ? "Deactivate" : "Activate"}
+              {editing.stAtivo ? "Desativar" : "Ativar"}
             </Button>
           </div>
         )}
       </Modal>
 
-      <Modal title="Linked artifacts" isOpen={showingArtifactsFor !== null} onClose={() => setShowingArtifactsFor(null)}>
+      <Modal title="Artefatos vinculados" isOpen={showingArtifactsFor !== null} onClose={() => setShowingArtifactsFor(null)}>
         <ul className="flex flex-col gap-1.5 text-sm text-foreground">
           {artifacts?.map((a) => (
             <li key={a.id}>

@@ -28,6 +28,17 @@ export interface PullRequestItem {
   artifact: ArtifactRef | null;
 }
 
+/** display labels for `PullRequest.status` — the value sent/stored (e.g. filters, API params) stays untouched. */
+export const PR_STATUS_LABELS: Record<string, string> = {
+  OPEN: "Aberto",
+  MERGED: "Integrado",
+  CLOSED: "Fechado",
+};
+
+export function prStatusLabel(status: string): string {
+  return PR_STATUS_LABELS[status] ?? status;
+}
+
 export function useBranchesList(page: number) {
   return useQuery({
     queryKey: ["branches", { page }],

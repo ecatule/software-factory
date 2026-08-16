@@ -67,30 +67,30 @@ export function SystemDetail() {
     await updateSystem.mutateAsync({ id: systemId, name: system.name, stAtivo: !system.stAtivo });
   }
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">Loading…</p>;
-  if (!system || !systemId) return <p className="text-sm text-muted-foreground">System not found.</p>;
+  if (isLoading) return <p className="text-sm text-muted-foreground">Carregando…</p>;
+  if (!system || !systemId) return <p className="text-sm text-muted-foreground">Sistema não encontrado.</p>;
 
   return (
     <div className="flex flex-col gap-8">
       <header className="flex items-center justify-between">
         <h1 className="flex items-center gap-2.5 text-2xl font-bold tracking-tight text-foreground">
           {system.name}
-          <Badge label={system.stAtivo ? "ACTIVE" : "INACTIVE"} tone={system.stAtivo ? "success" : "neutral"} />
+          <Badge label={system.stAtivo ? "ATIVO" : "INATIVO"} tone={system.stAtivo ? "success" : "neutral"} />
         </h1>
         {canWrite && (
           <Button type="button" variant={system.stAtivo ? "destructive" : "outline"} onClick={toggleActive}>
-            {system.stAtivo ? "Deactivate system" : "Activate system"}
+            {system.stAtivo ? "Desativar sistema" : "Ativar sistema"}
           </Button>
         )}
       </header>
 
       <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-5">
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-          <FormField label="Name" registration={register("name", { required: true })} />
-          <FormField label="Description" type="textarea" registration={register("description")} />
+          <FormField label="Nome" registration={register("name", { required: true })} />
+          <FormField label="Descrição" type="textarea" registration={register("description")} />
           {canWrite && (
             <Button type="submit" className="self-start">
-              Save
+              Salvar
             </Button>
           )}
         </form>
@@ -173,32 +173,32 @@ function SystemArtifacts({ systemId }: { systemId: string }) {
         type: artifact.type,
         stAtivo: !artifact.stAtivo,
       });
-      setToggleMessage(`"${artifact.name}" ${artifact.stAtivo ? "deactivated" : "activated"}.`);
+      setToggleMessage(`"${artifact.name}" ${artifact.stAtivo ? "desativado" : "ativado"}.`);
     } catch (error) {
       // Previously unhandled — a failed toggle (e.g. an expired session,
       // see AuthContext.tsx) looked exactly like "not allowing" it, with no
       // feedback at all.
       if (error instanceof ApiError) {
         const message = (error.body as { message?: string })?.message;
-        setToggleError(message ?? `Request failed (${error.status}). Try reloading the page.`);
+        setToggleError(message ?? `A requisição falhou (${error.status}). Tente recarregar a página.`);
       } else {
-        setToggleError("Unexpected error updating the artifact.");
+        setToggleError("Erro inesperado ao atualizar o artefato.");
       }
     }
   }
 
   const columns: ColumnDef<SystemArtifact, unknown>[] = [
-    { header: "Name", accessorKey: "name" },
-    { header: "Type", accessorKey: "type" },
-    { header: "Technology", accessorKey: "technology" },
+    { header: "Nome", accessorKey: "name" },
+    { header: "Tipo", accessorKey: "type" },
+    { header: "Tecnologia", accessorKey: "technology" },
     {
       header: "Status",
       cell: ({ row }) => (
-        <Badge label={row.original.stAtivo ? "ACTIVE" : "INACTIVE"} tone={row.original.stAtivo ? "success" : "neutral"} />
+        <Badge label={row.original.stAtivo ? "ATIVO" : "INATIVO"} tone={row.original.stAtivo ? "success" : "neutral"} />
       ),
     },
     {
-      header: "Actions",
+      header: "Ações",
       cell: ({ row }) =>
         canWrite && (
           <span className="flex items-center gap-1">
@@ -207,8 +207,8 @@ function SystemArtifacts({ systemId }: { systemId: string }) {
               variant="ghost"
               size="icon"
               className="size-8"
-              title="Edit"
-              aria-label="Edit"
+              title="Editar"
+              aria-label="Editar"
               onClick={() => openEdit(row.original)}
             >
               <Pencil className="size-4" />
@@ -218,8 +218,8 @@ function SystemArtifacts({ systemId }: { systemId: string }) {
               variant="ghost"
               size="icon"
               className="size-8"
-              title={row.original.stAtivo ? "Deactivate" : "Activate"}
-              aria-label={row.original.stAtivo ? "Deactivate" : "Activate"}
+              title={row.original.stAtivo ? "Desativar" : "Ativar"}
+              aria-label={row.original.stAtivo ? "Desativar" : "Ativar"}
               disabled={updateArtifact.isPending}
               onClick={() => toggleActive(row.original)}
             >
@@ -238,7 +238,7 @@ function SystemArtifacts({ systemId }: { systemId: string }) {
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="search"
-            placeholder="Search by name…"
+            placeholder="Buscar por nome…"
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
@@ -249,7 +249,7 @@ function SystemArtifacts({ systemId }: { systemId: string }) {
         </div>
         {canWrite && (
           <Button type="button" onClick={openCreate}>
-            <Plus /> New artifact
+            <Plus /> Novo artefato
           </Button>
         )}
       </div>
@@ -260,14 +260,14 @@ function SystemArtifacts({ systemId }: { systemId: string }) {
         columns={columns}
         data={data?.items ?? []}
         isLoading={isLoading}
-        emptyMessage="No artifacts match."
+        emptyMessage="Nenhum artefato encontrado."
       />
       {data && (
         <Pagination page={data.page} pageSize={data.page_size} total={data.total} onPageChange={setPage} />
       )}
 
       <Modal
-        title={editingArtifact ? "Edit artifact" : "New artifact"}
+        title={editingArtifact ? "Editar artefato" : "Novo artefato"}
         isOpen={isCreating || editingArtifact !== null}
         onClose={() => {
           setIsCreating(false);
@@ -275,10 +275,10 @@ function SystemArtifacts({ systemId }: { systemId: string }) {
         }}
       >
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-          <FormField label="Name" registration={register("name", { required: true })} />
+          <FormField label="Nome" registration={register("name", { required: true })} />
           <div className="flex flex-col gap-1.5">
             <label htmlFor="artifactType" className="text-sm font-medium text-foreground">
-              Type
+              Tipo
             </label>
             <NativeSelect id="artifactType" {...register("type", { required: true })}>
               {ARTIFACT_TYPES.map((t) => (
@@ -288,8 +288,8 @@ function SystemArtifacts({ systemId }: { systemId: string }) {
               ))}
             </NativeSelect>
           </div>
-          <FormField label="Technology" registration={register("technology")} />
-          <FormField label="Description" type="textarea" registration={register("description")} />
+          <FormField label="Tecnologia" registration={register("technology")} />
+          <FormField label="Descrição" type="textarea" registration={register("description")} />
           <div className="flex flex-col gap-1.5">
             <label htmlFor="artifactRepositoryIds" className="text-sm font-medium text-foreground">
               Repositórios
@@ -306,7 +306,7 @@ function SystemArtifacts({ systemId }: { systemId: string }) {
             </NativeSelect>
           </div>
           <Button type="submit" className="self-start">
-            Save artifact
+            Salvar artefato
           </Button>
         </form>
       </Modal>

@@ -11,6 +11,17 @@ export interface TestExecution {
   result: { passedCount: number; failedCount: number; skippedCount: number } | null;
 }
 
+/** display labels for `TestExecution.status` — underlying value stays untouched. */
+export const TEST_STATUS_LABELS: Record<TestExecution["status"], string> = {
+  RUNNING: "Em execução",
+  PASSED: "Passou",
+  FAILED: "Falhou",
+};
+
+export function testStatusLabel(status: TestExecution["status"]): string {
+  return TEST_STATUS_LABELS[status] ?? status;
+}
+
 export function useDemandTests(demandId: string | null) {
   return useQuery({
     queryKey: ["demand", demandId, "tests"],

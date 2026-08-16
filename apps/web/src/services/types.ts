@@ -80,9 +80,9 @@ export interface SpecificationProposal {
 
 export interface GitActivity {
   repositories: { id: string; externalReference: string }[];
-  branches: { id: string; name: string }[];
-  commits: { id: string; sha: string }[];
-  pull_requests: { id: string; externalReference: string; status: string }[];
+  branches: { id: string; name: string; artifactId: string }[];
+  commits: { id: string; sha: string; artifactId: string }[];
+  pull_requests: { id: string; externalReference: string; status: string; artifactId: string | null }[];
 }
 
 /** Shared envelope every 002-web-console list endpoint returns (data-model.md). */

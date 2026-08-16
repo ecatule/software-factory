@@ -8,7 +8,7 @@ interface Props {
 export function TimelineTab({ entries }: Props) {
   return (
     <div className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold text-foreground">Timeline</h2>
+      <h2 className="text-sm font-semibold text-foreground">Linha do tempo</h2>
       <Timeline entries={entries} />
     </div>
   );

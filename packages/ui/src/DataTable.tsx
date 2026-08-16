@@ -18,7 +18,7 @@ export function DataTable<T>({
   columns,
   data,
   isLoading,
-  emptyMessage = "No records found.",
+  emptyMessage = "Nenhum registro encontrado.",
   onRowClick,
 }: DataTableProps<T>) {
   const table = useReactTable({
@@ -28,7 +28,7 @@ export function DataTable<T>({
   });
 
   if (isLoading) {
-    return <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>;
+    return <p className="py-8 text-center text-sm text-muted-foreground">Carregando…</p>;
   }
 
   if (data.length === 0) {

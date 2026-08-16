@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/select";
 import { useAuth } from "../context/AuthContext";
 import {
+  artifactStatusLabel,
+  changeTypeLabel,
   useArtifactFiles,
   useArtifactsList,
   useCreateArtifact,
@@ -35,10 +37,10 @@ export function Artifacts() {
   const { register, handleSubmit, reset } = useForm<CreateArtifactInput>();
 
   const columns: ColumnDef<Artifact, unknown>[] = [
-    { header: "Name", accessorKey: "name" },
-    { header: "Type", accessorKey: "type" },
-    { header: "Technology", accessorKey: "technology" },
-    { header: "Status", cell: ({ row }) => <Badge label={row.original.status} /> },
+    { header: "Nome", accessorKey: "name" },
+    { header: "Tipo", accessorKey: "type" },
+    { header: "Tecnologia", accessorKey: "technology" },
+    { header: "Status", cell: ({ row }) => <Badge label={artifactStatusLabel(row.original.status)} /> },
   ];
 
   function openCreate() {
@@ -54,10 +56,10 @@ export function Artifacts() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Artifacts</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Artefatos</h1>
         {hasPermission("DEMAND_WRITE") && (
           <Button type="button" onClick={openCreate}>
-            <Plus /> New artifact
+            <Plus /> Novo artefato
           </Button>
         )}
       </header>
@@ -66,31 +68,31 @@ export function Artifacts() {
         data={data?.items ?? []}
         isLoading={isLoading}
         onRowClick={(artifact) => setOpenArtifactId(artifact.id)}
-        emptyMessage="No artifacts identified yet."
+        emptyMessage="Nenhum artefato identificado ainda."
       />
       {data && (
         <Pagination page={data.page} pageSize={data.page_size} total={data.total} onPageChange={setPage} />
       )}
 
-      <Modal title="Artifact files" isOpen={openArtifactId !== null} onClose={() => setOpenArtifactId(null)}>
+      <Modal title="Arquivos do artefato" isOpen={openArtifactId !== null} onClose={() => setOpenArtifactId(null)}>
         <ul className="flex flex-col gap-1.5 text-sm text-foreground">
           {files?.map((f) => (
             <li key={f.id}>
-              {f.filePath} — {f.changeType}
+              {f.filePath} — {changeTypeLabel(f.changeType)}
               {f.changeType === "DISCOVERED" && f.reason ? ` (${f.reason})` : null}
             </li>
           ))}
         </ul>
       </Modal>
 
-      <Modal title="New artifact" isOpen={isCreating} onClose={() => setIsCreating(false)}>
+      <Modal title="Novo artefato" isOpen={isCreating} onClose={() => setIsCreating(false)}>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <label htmlFor="artifactDemandId" className="text-sm font-medium text-foreground">
-              Demand
+              Demanda
             </label>
             <NativeSelect id="artifactDemandId" {...register("demandId", { required: true })}>
-              <option value="">Select a demand…</option>
+              <option value="">Selecione uma demanda…</option>
               {demands?.items.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.externalId} — {d.title}
@@ -98,14 +100,14 @@ export function Artifacts() {
               ))}
             </NativeSelect>
           </div>
-          <FormField label="Name" registration={register("name", { required: true })} />
-          <FormField label="Type" registration={register("type", { required: true })} />
-          <FormField label="Description" type="textarea" registration={register("description")} />
-          <FormField label="Technology" registration={register("technology")} />
-          <FormField label="Path" registration={register("path")} />
+          <FormField label="Nome" registration={register("name", { required: true })} />
+          <FormField label="Tipo" registration={register("type", { required: true })} />
+          <FormField label="Descrição" type="textarea" registration={register("description")} />
+          <FormField label="Tecnologia" registration={register("technology")} />
+          <FormField label="Caminho" registration={register("path")} />
           <div className="flex flex-col gap-1.5">
             <label htmlFor="artifactRepositoryIds" className="text-sm font-medium text-foreground">
-              Repositories
+              Repositórios
             </label>
             <NativeSelect id="artifactRepositoryIds" multiple className="h-auto" {...register("repositoryIds")}>
               {repositories?.items.map((r) => (
@@ -116,7 +118,7 @@ export function Artifacts() {
             </NativeSelect>
           </div>
           <Button type="submit" className="self-start">
-            Create
+            Criar
           </Button>
         </form>
       </Modal>

@@ -1,23 +1,21 @@
+import { DataTable } from "@software-factory/ui";
+import type { ColumnDef } from "@tanstack/react-table";
 import type { TimelineEntry } from "../services/types";
 
 interface Props {
   entries?: TimelineEntry[];
 }
 
-/** spec User Story 5, Acceptance Scenario 3: chronological event timeline. */
+const columns: ColumnDef<TimelineEntry, unknown>[] = [
+  { header: "Quando", cell: ({ row }) => new Date(row.original.occurredAt).toLocaleString() },
+  { header: "Ação", accessorKey: "action" },
+  {
+    header: "Entidade",
+    cell: ({ row }) => `${row.original.entityType}${row.original.entityId ? ` (${row.original.entityId})` : ""}`,
+  },
+];
+
+/** spec User Story 5, Acceptance Scenario 3: chronological event timeline — no per-row action, pure read-only log. */
 export function Timeline({ entries }: Props) {
-  if (!entries?.length) return <p className="text-sm text-muted-foreground">No events recorded yet.</p>;
-  return (
-    <ol className="flex flex-col gap-2 border-l-2 border-border pl-4">
-      {entries.map((entry) => (
-        <li key={entry.id} className="text-sm text-foreground">
-          <time dateTime={entry.occurredAt} className="text-muted-foreground">
-            {new Date(entry.occurredAt).toLocaleString()}
-          </time>{" "}
-          — {entry.action} {entry.entityType}
-          {entry.entityId ? ` (${entry.entityId})` : ""}
-        </li>
-      ))}
-    </ol>
-  );
+  return <DataTable columns={columns} data={entries ?? []} emptyMessage="Nenhum evento registrado ainda." />;
 }

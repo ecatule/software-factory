@@ -42,7 +42,7 @@ import {
 } from "../services/useSystems";
 import { useGeneratePromptSpec } from "../services/usePromptSpec";
 import { useAgentsList, useTriggerExecution } from "../services/useAgents";
-import { useExecution, pipelineStageLabel } from "../services/useExecutions";
+import { executionStatusLabel, useExecution, pipelineStageLabel } from "../services/useExecutions";
 import { useIncrementsList } from "../services/useIncrements";
 import type { Specification } from "../services/types";
 
@@ -92,6 +92,29 @@ const STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger"> 
   REJECTED: "danger",
   SUPERSEDED: "warning",
 };
+
+/** display labels for `SpecificationVersion.status` — underlying value stays untouched. */
+const SPEC_VERSION_STATUS_LABELS: Record<string, string> = {
+  GENERATED: "Gerada",
+  APPROVED: "Aprovada",
+  REJECTED: "Rejeitada",
+  SUPERSEDED: "Substituída",
+};
+
+function specVersionStatusLabel(status: string): string {
+  return SPEC_VERSION_STATUS_LABELS[status] ?? status;
+}
+
+/** display labels for `SpecificationVersion.source` — underlying value stays untouched. */
+const SPEC_VERSION_SOURCE_LABELS: Record<string, string> = {
+  AI: "IA",
+  HUMAN_EDITED: "Editado manualmente",
+  UPLOADED: "Anexado",
+};
+
+function specVersionSourceLabel(source: string): string {
+  return SPEC_VERSION_SOURCE_LABELS[source] ?? source;
+}
 
 const EXECUTION_STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger"> = {
   QUEUED: "neutral",
@@ -155,11 +178,11 @@ export function SpecificationWorkspace() {
     setTechnicalText(buildTechnicalTemplate(techList, originBranch));
   }, [projectTechnologies, originBranch, technicalTextTouched]);
 
-  if (!specificationId) return <p className="text-sm text-muted-foreground">No specification selected.</p>;
-  if (!specification) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (!specificationId) return <p className="text-sm text-muted-foreground">Nenhuma especificação selecionada.</p>;
+  if (!specification) return <p className="text-sm text-muted-foreground">Carregando…</p>;
 
   async function handleUpload(specifyMarkdown: string, planMarkdown: string) {
-    await uploadVersion.mutateAsync({ specifyMarkdown, planMarkdown, reason: "Uploaded from external source" });
+    await uploadVersion.mutateAsync({ specifyMarkdown, planMarkdown, reason: "Enviado de fonte externa" });
   }
 
   return (
@@ -309,7 +332,7 @@ function VersionHistoryButton({
             (v) => deactivateVersion.mutate(v.versionNumber),
           )}
           data={versions ?? []}
-          emptyMessage="No versions yet."
+          emptyMessage="Nenhuma versão ainda."
         />
         {diff && (
           <section className="mt-4 flex flex-col gap-2 border-t border-border pt-4">
@@ -351,9 +374,14 @@ function versionColumns(
     { header: "Motivo", accessorFn: (v) => v.reason ?? "—" },
     {
       header: "Status",
-      cell: ({ row }) => <Badge label={row.original.status} tone={STATUS_TONE[row.original.status] ?? "neutral"} />,
+      cell: ({ row }) => (
+        <Badge label={specVersionStatusLabel(row.original.status)} tone={STATUS_TONE[row.original.status] ?? "neutral"} />
+      ),
     },
-    { header: "Origem", cell: ({ row }) => <Badge label={row.original.source} tone="neutral" /> },
+    {
+      header: "Origem",
+      cell: ({ row }) => <Badge label={specVersionSourceLabel(row.original.source)} tone="neutral" />,
+    },
     {
       header: "Ações",
       cell: ({ row }) => {
@@ -997,7 +1025,7 @@ function ReviewStep({ demandId }: { demandId: string }) {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="flex flex-col gap-2">
           <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            SPEC {specLatest && <Badge label={specLatest.status} tone={STATUS_TONE[specLatest.status] ?? "neutral"} />}
+            SPEC {specLatest && <Badge label={specVersionStatusLabel(specLatest.status)} tone={STATUS_TONE[specLatest.status] ?? "neutral"} />}
           </h3>
           {specLatest ? (
             <MarkdownEditor value={specLatest.content} onChange={() => {}} readOnly />
@@ -1014,7 +1042,7 @@ function ReviewStep({ demandId }: { demandId: string }) {
         </div>
         <div className="flex flex-col gap-2">
           <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            PLAN {planLatest && <Badge label={planLatest.status} tone={STATUS_TONE[planLatest.status] ?? "neutral"} />}
+            PLAN {planLatest && <Badge label={specVersionStatusLabel(planLatest.status)} tone={STATUS_TONE[planLatest.status] ?? "neutral"} />}
           </h3>
           {planLatest ? (
             <MarkdownEditor value={planLatest.content} onChange={() => {}} readOnly />
@@ -1048,7 +1076,7 @@ function ReviewStep({ demandId }: { demandId: string }) {
         <p className="flex items-center gap-2 text-sm text-foreground">
           Execução do Developer Agent:{" "}
           <Badge
-            label={runningExecution.data.status}
+            label={executionStatusLabel(runningExecution.data.status)}
             tone={EXECUTION_STATUS_TONE[runningExecution.data.status] ?? "neutral"}
           />
           {runningExecution.data.status === "RUNNING" &&
@@ -1076,7 +1104,7 @@ function ReviewStep({ demandId }: { demandId: string }) {
 function errorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError) {
     const message = (error.body as { message?: string })?.message;
-    return message ?? `Request failed (${error.status}). Try reloading the page.`;
+    return message ?? `A requisição falhou (${error.status}). Tente recarregar a página.`;
   }
   return error instanceof Error ? error.message : fallback;
 }

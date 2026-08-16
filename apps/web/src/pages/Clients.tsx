@@ -23,8 +23,8 @@ export function Clients() {
   const { register, handleSubmit, reset } = useForm<ClientFormValues>();
 
   const columns: ColumnDef<Client, unknown>[] = [
-    { header: "Name", accessorKey: "name" },
-    { header: "External reference", accessorKey: "externalReference" },
+    { header: "Nome", accessorKey: "name" },
+    { header: "Referência externa", accessorKey: "externalReference" },
   ];
 
   function openCreate() {
@@ -50,9 +50,9 @@ export function Clients() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Clients</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Clientes</h1>
         <Button type="button" onClick={openCreate}>
-          <Plus /> New client
+          <Plus /> Novo cliente
         </Button>
       </header>
 
@@ -61,11 +61,11 @@ export function Clients() {
         data={clients ?? []}
         isLoading={isLoading}
         onRowClick={openEdit}
-        emptyMessage="No clients yet — create one to get started."
+        emptyMessage="Nenhum cliente ainda — crie um para começar."
       />
 
       <Modal
-        title={editing ? "Edit client" : "New client"}
+        title={editing ? "Editar cliente" : "Novo cliente"}
         isOpen={isCreating || editing !== null}
         onClose={() => {
           setIsCreating(false);
@@ -73,10 +73,10 @@ export function Clients() {
         }}
       >
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-          <FormField label="Name" registration={register("name", { required: true })} />
-          <FormField label="External reference" registration={register("externalReference")} />
+          <FormField label="Nome" registration={register("name", { required: true })} />
+          <FormField label="Referência externa" registration={register("externalReference")} />
           <Button type="submit" className="self-start">
-            Save
+            Salvar
           </Button>
         </form>
         {editing && <ClientSystems clientId={editing.id} />}
@@ -123,7 +123,7 @@ function ClientSystems({ clientId }: { clientId: string }) {
         ))}
       </ul>
       <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => setSystems.mutate(selected)}>
-        Save systems
+        Salvar sistemas
       </Button>
     </section>
   );

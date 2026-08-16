@@ -7,8 +7,9 @@ import { Eye, Pencil, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "../../context/AuthContext";
 import { apiGet, apiPost } from "../../services/api";
-import { useCreateIncrement, useIncrementsList, type Increment } from "../../services/useIncrements";
+import { incrementStatusLabel, useCreateIncrement, useIncrementsList, type Increment } from "../../services/useIncrements";
 import { useSpecificationVersionsList } from "../../services/useSpecificationVersions";
+import { demandStatusLabel } from "../../services/useDemands";
 import type { Demand, Specification, WorkflowView } from "../../services/types";
 import { WorkflowProgress } from "../WorkflowProgress";
 
@@ -58,7 +59,10 @@ export function SummaryTab({ demandId, demand, workflow }: Props) {
     <div className="flex flex-col gap-6">
       <section>
         <h2 className="flex items-center gap-2 text-xl font-bold text-foreground">
-          {demand?.title} <span className="text-base font-normal text-muted-foreground">({demand?.status})</span>
+          {demand?.title}{" "}
+          <span className="text-base font-normal text-muted-foreground">
+            {demand && `(${demandStatusLabel(demand.status)})`}
+          </span>
         </h2>
         {currentIncrement && (
           <p className="mt-1 text-sm text-muted-foreground">Incremento {currentIncrement.number}</p>
@@ -124,7 +128,7 @@ export function SummaryTab({ demandId, demand, workflow }: Props) {
 function incrementColumns(onOpen: (increment: Increment) => void): ColumnDef<Increment, unknown>[] {
   return [
     { header: "Nº", accessorKey: "number" },
-    { header: "Status", accessorKey: "status" },
+    { header: "Status", cell: ({ row }) => incrementStatusLabel(row.original.status) },
     { header: "Motivo", accessorKey: "reason" },
     {
       header: "Ações",
@@ -176,7 +180,7 @@ function IncrementSnapshotModal({
 
   return (
     <Modal
-      title={`Incremento ${increment.number} — ${increment.status} — ${increment.reason}`}
+      title={`Incremento ${increment.number} — ${incrementStatusLabel(increment.status)} — ${increment.reason}`}
       isOpen
       onClose={onClose}
       className="modal-wide"

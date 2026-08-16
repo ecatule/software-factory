@@ -46,8 +46,8 @@ export function Settings() {
   const { register, handleSubmit, reset } = useForm<ConfigFormValues>();
 
   const columns: ColumnDef<Provider, unknown>[] = [
-    { header: "Key", accessorKey: "key" },
-    { header: "Kind", accessorKey: "kind" },
+    { header: "Chave", accessorKey: "key" },
+    { header: "Tipo", accessorKey: "kind" },
   ];
 
   async function onSubmit(values: ConfigFormValues) {
@@ -66,20 +66,20 @@ export function Settings() {
       reset();
     } catch (error) {
       if (error instanceof ApiError) {
-        setSaveError((error.body as { message?: string })?.message ?? "Save rejected.");
+        setSaveError((error.body as { message?: string })?.message ?? "Salvamento rejeitado.");
       } else {
-        setSaveError("Unexpected error saving the configuration.");
+        setSaveError("Erro inesperado ao salvar a configuração.");
       }
     }
   }
 
   return (
     <div className="flex flex-col gap-8">
-      <h1 className="text-2xl font-bold tracking-tight text-foreground">Settings — Providers</h1>
+      <h1 className="text-2xl font-bold tracking-tight text-foreground">Configurações — Providers</h1>
 
       <DataTable columns={columns} data={providers ?? []} isLoading={isLoading} onRowClick={(p) => setSelectedProviderId(p.id)} />
 
-      <Modal title="Configurations" isOpen={selectedProviderId !== null} onClose={() => setSelectedProviderId(null)}>
+      <Modal title="Configurações" isOpen={selectedProviderId !== null} onClose={() => setSelectedProviderId(null)}>
         <div className="flex flex-col gap-4">
           <ul className="flex flex-col gap-1.5 text-sm text-foreground">
             {configurations?.items.map((c) => {
@@ -88,7 +88,7 @@ export function Settings() {
               const model = typeof c.settings.model === "string" ? c.settings.model : null;
               return (
                 <li key={c.id}>
-                  {c.projectId ?? "platform-default"} / {c.pipelineStage ?? "any stage"}
+                  {c.projectId ?? "padrão da plataforma"} / {c.pipelineStage ?? "qualquer etapa"}
                   {profile && <> — Perfil: {profile}</>}
                   {model && <> — Model: {model}</>}
                   {!profile && !model && <> — {JSON.stringify(c.settings)}</>}
@@ -99,9 +99,9 @@ export function Settings() {
 
           <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
             {saveError && <p className="text-sm font-medium text-destructive">{saveError}</p>}
-            <FormField label="Project ID (optional)" registration={register("projectId")} />
-            <FormField label="Pipeline stage (optional)" registration={register("pipelineStage")} />
-            <FormField label="Model (optional, non-secret)" registration={register("model")} />
+            <FormField label="Project ID (opcional)" registration={register("projectId")} />
+            <FormField label="Etapa do pipeline (opcional)" registration={register("pipelineStage")} />
+            <FormField label="Model (opcional, não-secreto)" registration={register("model")} />
             <div className="flex flex-col gap-1.5">
               <label htmlFor="authProfileKey" className="text-sm font-medium text-foreground">
                 Auth profile (opcional)
@@ -122,7 +122,7 @@ export function Settings() {
               </NativeSelect>
             </div>
             <Button type="submit" className="self-start">
-              Save configuration
+              Salvar configuração
             </Button>
           </form>
         </div>
@@ -153,16 +153,16 @@ function RolePermissions() {
   }
 
   const roleColumns: ColumnDef<Role, unknown>[] = [
-    { header: "Role", accessorKey: "name" },
-    { header: "Description", accessorKey: "description" },
+    { header: "Papel", accessorKey: "name" },
+    { header: "Descrição", accessorKey: "description" },
   ];
 
   return (
     <section className="flex flex-col gap-4">
-      <h2 className="text-sm font-semibold text-foreground">Roles &amp; Permissions</h2>
+      <h2 className="text-sm font-semibold text-foreground">Papéis e permissões</h2>
       <DataTable columns={roleColumns} data={roles ?? []} onRowClick={(role) => setSelectedRoleId(role.id)} />
 
-      <Modal title="Permissions" isOpen={selectedRoleId !== null} onClose={() => setSelectedRoleId(null)}>
+      <Modal title="Permissões" isOpen={selectedRoleId !== null} onClose={() => setSelectedRoleId(null)}>
         <div className="flex flex-col gap-3">
           <ul className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
             {allPermissions?.map((permission) => (
@@ -180,7 +180,7 @@ function RolePermissions() {
             ))}
           </ul>
           <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => setPermissions.mutate(selected)}>
-            Save permissions
+            Salvar permissões
           </Button>
         </div>
       </Modal>
