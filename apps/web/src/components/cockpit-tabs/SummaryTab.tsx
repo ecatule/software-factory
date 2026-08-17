@@ -5,13 +5,16 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { Modal, MarkdownEditor, DataTable } from "@software-factory/ui";
 import { Download, Eye, Pencil, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/select";
 import { useAuth } from "../../context/AuthContext";
 import { apiGet, apiPost } from "../../services/api";
 import { incrementStatusLabel, useCreateIncrement, useIncrementsList, type Increment } from "../../services/useIncrements";
 import { useSpecificationVersionsList } from "../../services/useSpecificationVersions";
-import { demandStatusLabel } from "../../services/useDemands";
+import { DEMAND_PRIORITIES, demandStatusLabel, demandTypeLabel, useUpdateDemand } from "../../services/useDemands";
 import type { Demand, Specification, WorkflowView } from "../../services/types";
 import { WorkflowProgress } from "../WorkflowProgress";
+
+const DEMAND_TYPES = ["BUG", "FEATURE", "IMPROVEMENT", "TASK", "TECHNICAL_DEBT"];
 
 interface Props {
   demandId: string;
@@ -31,6 +34,32 @@ export function SummaryTab({ demandId, demand, workflow }: Props) {
   const [isCreatingIncrement, setIsCreatingIncrement] = useState(false);
   const [reason, setReason] = useState("");
   const [viewingIncrement, setViewingIncrement] = useState<Increment | null>(null);
+
+  const updateDemand = useUpdateDemand(demandId);
+  const [isEditingDemand, setIsEditingDemand] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editType, setEditType] = useState("");
+  const [editPriority, setEditPriority] = useState("");
+
+  function openEditDemand() {
+    if (!demand) return;
+    setEditTitle(demand.title);
+    setEditDescription(demand.description);
+    setEditType(demand.type);
+    setEditPriority(demand.priority);
+    setIsEditingDemand(true);
+  }
+
+  async function submitEditDemand() {
+    await updateDemand.mutateAsync({
+      title: editTitle,
+      description: editDescription,
+      type: editType,
+      priority: editPriority,
+    });
+    setIsEditingDemand(false);
+  }
 
   const currentIncrement = increments?.[increments.length - 1];
   const canCreateIncrement = !currentIncrement || currentIncrement.status === "COMPLETED";
@@ -58,16 +87,91 @@ export function SummaryTab({ demandId, demand, workflow }: Props) {
   return (
     <div className="flex flex-col gap-6">
       <section>
-        <h2 className="flex items-center gap-2 text-xl font-bold text-foreground">
-          {demand?.title}{" "}
-          <span className="text-base font-normal text-muted-foreground">
-            {demand && `(${demandStatusLabel(demand.status)})`}
-          </span>
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 className="flex items-center gap-2 text-xl font-bold text-foreground">
+            {demand?.title}{" "}
+            <span className="text-base font-normal text-muted-foreground">
+              {demand && `(${demandStatusLabel(demand.status)})`}
+            </span>
+          </h2>
+          {hasPermission("DEMAND_WRITE") && demand && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              title="Editar demanda"
+              aria-label="Editar demanda"
+              onClick={openEditDemand}
+            >
+              <Pencil className="size-4" />
+            </Button>
+          )}
+        </div>
         {currentIncrement && (
           <p className="mt-1 text-sm text-muted-foreground">Incremento {currentIncrement.number}</p>
         )}
       </section>
+
+      <Modal title="Editar demanda" isOpen={isEditingDemand} onClose={() => setIsEditingDemand(false)}>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="editTitle" className="text-sm font-medium text-foreground">
+              Título
+            </label>
+            <input
+              id="editTitle"
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              className="w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="editDescription" className="text-sm font-medium text-foreground">
+              Descrição
+            </label>
+            <textarea
+              id="editDescription"
+              value={editDescription}
+              onChange={(e) => setEditDescription(e.target.value)}
+              rows={6}
+              className={textareaClass}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="editType" className="text-sm font-medium text-foreground">
+              Tipo
+            </label>
+            <NativeSelect id="editType" value={editType} onChange={(e) => setEditType(e.target.value)}>
+              {DEMAND_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {demandTypeLabel(t)}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="editPriority" className="text-sm font-medium text-foreground">
+              Prioridade
+            </label>
+            <NativeSelect id="editPriority" value={editPriority} onChange={(e) => setEditPriority(e.target.value)}>
+              {DEMAND_PRIORITIES.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+          <Button
+            type="button"
+            onClick={submitEditDemand}
+            disabled={updateDemand.isPending || !editTitle.trim()}
+            className="self-start"
+          >
+            Salvar
+          </Button>
+        </div>
+      </Modal>
 
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-semibold text-foreground">Workflow</h2>

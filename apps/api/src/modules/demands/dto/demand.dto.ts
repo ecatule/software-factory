@@ -42,6 +42,18 @@ export class UpdateDemandDto {
   @IsOptional()
   @IsString()
   priority?: string;
+
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsEnum(DemandTypeDto)
+  type?: DemandTypeDto;
 }
 
 export class TransitionDemandDto {

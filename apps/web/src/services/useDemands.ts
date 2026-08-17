@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiGet, apiPost } from "./api";
+import { apiGet, apiPatch, apiPost } from "./api";
 import type { Demand, PaginatedResult } from "./types";
 
 export interface DemandFilters {
@@ -74,6 +74,9 @@ export function demandTypeLabel(type: string): string {
   return DEMAND_TYPE_LABELS[type] ?? type;
 }
 
+/** `Demand.priority` is free text (no backend enum) — this is the fixed option set the UI offers in both the create and edit forms. */
+export const DEMAND_PRIORITIES = ["Baixa", "Média", "Alta", "Urgente"];
+
 /** feature 004 FR-013: enrichment fields added to each list item. */
 export interface EnrichedDemand extends Demand {
   clientName: string;
@@ -123,5 +126,24 @@ export function useCreateDemand() {
   return useMutation({
     mutationFn: (input: CreateDemandInput) => apiPost<Demand>("/demands", input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["demands"] }),
+  });
+}
+
+export interface UpdateDemandInput {
+  title?: string;
+  description?: string;
+  type?: string;
+  priority?: string;
+}
+
+/** edits title/description/type/priority — everything else (client, project, externalId) is fixed at creation/import. */
+export function useUpdateDemand(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpdateDemandInput) => apiPatch<Demand>(`/demands/${id}`, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["demands"] });
+      queryClient.invalidateQueries({ queryKey: ["demand", id] });
+    },
   });
 }

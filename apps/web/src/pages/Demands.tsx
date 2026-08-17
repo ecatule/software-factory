@@ -13,6 +13,7 @@ import { useClientsList } from "../services/useClients";
 import { useProjectsList } from "../services/useProjects";
 import { useAgentsList } from "../services/useAgents";
 import {
+  DEMAND_PRIORITIES,
   demandStatusLabel,
   demandTypeLabel,
   useCreateDemand,
@@ -106,7 +107,7 @@ export function Demands() {
       title: "",
       description: "",
       type: "TASK",
-      priority: "medium",
+      priority: "Média",
       clientId: "",
       projectId: "",
     });
@@ -246,7 +247,18 @@ export function Demands() {
               ))}
             </NativeSelect>
           </div>
-          <FormField label="Prioridade" registration={register("priority", { required: true })} />
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="priority" className="text-sm font-medium text-foreground">
+              Prioridade
+            </label>
+            <NativeSelect id="priority" {...register("priority", { required: true })}>
+              {DEMAND_PRIORITIES.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="clientId" className="text-sm font-medium text-foreground">
               Cliente
