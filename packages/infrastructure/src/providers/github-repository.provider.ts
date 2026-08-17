@@ -132,10 +132,23 @@ export class GitHubRepositoryProvider implements CodeRepositoryProvider {
     branch: string,
     title: string,
     description: string,
+    baseBranch?: string,
   ): Promise<PullRequestRef> {
+    let base = baseBranch;
+    if (base) {
+      try {
+        await this.api(`/repos/${externalReference}/git/ref/heads/${base}`);
+      } catch {
+        base = undefined;
+      }
+    }
+    if (!base) {
+      const repo = await this.api(`/repos/${externalReference}`);
+      base = repo.default_branch;
+    }
     const data = await this.api(`/repos/${externalReference}/pulls`, {
       method: "POST",
-      body: JSON.stringify({ title, body: description, head: branch, base: "main" }),
+      body: JSON.stringify({ title, body: description, head: branch, base }),
     });
     return { externalReference: String(data.number), url: data.html_url, status: data.state };
   }

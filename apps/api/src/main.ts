@@ -1,3 +1,8 @@
+// Must run before any other import — several modules read `process.env.*`
+// at import time (e.g. auth.controller.ts's STATE_SECRET) or during Nest's
+// dependency-injection bootstrap (e.g. providers.module.ts's GITHUB_TOKEN),
+// both of which happen as a side effect of importing AppModule below.
+import "dotenv/config";
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import { ValidationPipe } from "@nestjs/common";

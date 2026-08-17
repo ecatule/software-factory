@@ -28,6 +28,12 @@ export class GitController {
     return this.gitService.commit(demandId, dto.artifactId, dto.message);
   }
 
+  @Post("commit-all")
+  @RequirePermission("GIT_WRITE")
+  commitAll(@Param("demandId") demandId: string) {
+    return this.gitService.commitAllArtifacts(demandId);
+  }
+
   @Post("pull-request")
   @RequirePermission("PR_CREATE")
   createPullRequest(@Param("demandId") demandId: string) {

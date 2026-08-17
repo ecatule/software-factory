@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { apiGet } from "./api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiGet, apiPost } from "./api";
 import type { PaginatedResult } from "./types";
 
 export interface ArtifactRef {
@@ -58,5 +58,32 @@ export function usePullRequestsList(page: number) {
     queryKey: ["pull-requests", { page }],
     queryFn: () =>
       apiGet<PaginatedResult<PullRequestItem>>(`/pull-requests?page=${page}&page_size=20`),
+  });
+}
+
+export interface CommitAllResult {
+  artifactId: string;
+  sha?: string;
+  error?: string;
+  skipped?: true;
+}
+
+/** manual "commit + push everything pending" trigger — Agentes screen. */
+export function useCommitAllArtifacts() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (demandId: string) => apiPost<CommitAllResult[]>(`/demands/${demandId}/commit-all`),
+    meta: { successMessage: "Commit e push processados." },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["commits"] }),
+  });
+}
+
+/** manual "create pull request" trigger — Agentes screen. */
+export function useCreatePullRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (demandId: string) => apiPost<PullRequestItem>(`/demands/${demandId}/pull-request`),
+    meta: { successMessage: "Pull Request criado." },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["pull-requests"] }),
   });
 }

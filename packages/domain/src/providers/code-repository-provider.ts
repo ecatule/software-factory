@@ -62,11 +62,19 @@ export interface CodeRepositoryProvider {
     filePaths?: string[],
   ): Promise<CommitRef>;
   push(externalReference: string, targetPath: string, branch: string): Promise<void>;
+  /**
+   * `baseBranch`, when given, is the PR's merge target (the Repository's
+   * configured `homologationBranch` — a PR must never target the production
+   * branch). Implementations fall back to the repo's own default branch when
+   * omitted or when it doesn't exist on that specific repo, same convention
+   * as `createBranch`.
+   */
   createPullRequest(
     externalReference: string,
     branch: string,
     title: string,
     description: string,
+    baseBranch?: string,
   ): Promise<PullRequestRef>;
   getPullRequest(externalReference: string, prReference: string): Promise<PullRequestRef>;
   getChecks(externalReference: string, prReference: string): Promise<CheckRef[]>;

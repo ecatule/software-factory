@@ -147,25 +147,34 @@ export class GitService {
       include: { result: true },
     });
 
-    const [firstArtifact] = artifacts;
-    const [firstRepoLink] = firstArtifact?.repositories ?? [];
-    if (!firstArtifact || !firstRepoLink) {
+    // A demand's artifacts are unordered (e.g. UI-only artifacts like "Tela
+    // X" never get a repository link) — picking artifacts[0] blindly would
+    // fail even when other artifacts in the same demand ARE linked and
+    // branched. Pick the first artifact that actually has both.
+    const branches = await this.prisma.db.branch.findMany({ where: { demandId } });
+    const branchByArtifactId = new Map(branches.map((b) => [b.artifactId, b]));
+    const firstArtifact = artifacts.find(
+      (a) => a.repositories.length > 0 && branchByArtifactId.has(a.id),
+    );
+    if (!firstArtifact) {
       throw new HttpException("No repository linked to this demand's artifacts", HttpStatus.UNPROCESSABLE_ENTITY);
     }
-    const branch = await this.prisma.db.branch.findUniqueOrThrow({
-      where: { artifactId_demandId: { artifactId: firstArtifact.id, demandId } },
-    });
+    const branch = branchByArtifactId.get(firstArtifact.id)!;
     const repository = await this.prisma.db.repository.findUniqueOrThrow({
       where: { id: branch.repositoryId },
     });
     const externalReference = composeOwnerRepo(repository.externalReference, firstArtifact.name);
 
     const description = this.buildPullRequestDescription(demand, artifacts, tests);
+    // spec 004 FR-002: a PR must always target the repository's homologation
+    // branch, never production — codeRepositoryProvider falls back to the
+    // repo's own default branch only when homologationBranch isn't configured.
     const pr = await this.codeRepositoryProvider.createPullRequest(
       externalReference,
       branch.name,
       `[${demand.externalId}] ${demand.title}`,
       description,
+      repository.homologationBranch ?? undefined,
     );
 
     return this.prisma.db.pullRequest.create({
@@ -184,6 +193,65 @@ export class GitService {
   /** spec User Story 6/8: single shared branch-creation path (see developer-agent.service.ts). */
   createBranch(demandId: string) {
     return this.developerAgent.ensureBranchesForDemand(demandId);
+  }
+
+  /**
+   * Manual "commit + push everything pending" trigger (Agentes screen) for
+   * when the automated pipeline stalled before reaching its own commit
+   * stage. Unlike that stage — which only sweeps files that became dirty
+   * DURING one execution (diff against a "before" snapshot, see
+   * executions.processor.ts) — this sweeps whatever is CURRENTLY dirty in
+   * each artifact's repo, since the whole point is to unstick a demand with
+   * leftover uncommitted work. Per-artifact failures are captured instead of
+   * aborting the rest, same convention as that automated stage.
+   */
+  async commitAllArtifacts(demandId: string) {
+    const demand = await this.prisma.db.demand.findUniqueOrThrow({ where: { id: demandId } });
+    const artifacts = await this.prisma.db.artifact.findMany({
+      where: { demandId },
+      include: { repositories: true },
+    });
+    const workspacePath = await this.developerAgent.resolveWorkspacePath(demandId);
+    const message = `feat[${demand.externalId}] ${demand.title.trim()}\n\nCommit manual via tela Agentes.`;
+
+    const results: Array<
+      { artifactId: string; sha: string } | { artifactId: string; error: string } | { artifactId: string; skipped: true }
+    > = [];
+    for (const artifact of artifacts) {
+      const [firstRepoLink] = artifact.repositories;
+      if (!firstRepoLink) {
+        results.push({ artifactId: artifact.id, skipped: true });
+        continue;
+      }
+      const branch = await this.prisma.db.branch.findUnique({
+        where: { artifactId_demandId: { artifactId: artifact.id, demandId } },
+      });
+      if (!branch) {
+        results.push({ artifactId: artifact.id, skipped: true });
+        continue;
+      }
+      const repository = await this.prisma.db.repository.findUniqueOrThrow({
+        where: { id: branch.repositoryId },
+      });
+      const externalReference = composeOwnerRepo(repository.externalReference, artifact.name);
+      const targetPath = this.developerAgent.resolveClonePath(workspacePath, externalReference);
+      const dirty = await this.developerAgent.snapshotDirtyFiles([targetPath]);
+      const files = [...(dirty.get(targetPath) ?? [])];
+      if (files.length === 0) {
+        results.push({ artifactId: artifact.id, skipped: true });
+        continue;
+      }
+      try {
+        const commit = await this.commit(demandId, artifact.id, message, files);
+        results.push({ artifactId: artifact.id, sha: commit.sha });
+      } catch (error) {
+        results.push({
+          artifactId: artifact.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return results;
   }
 
   private buildPullRequestDescription(

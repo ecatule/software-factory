@@ -1,20 +1,28 @@
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { DataTable } from "@software-factory/ui";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/select";
+import { useAuth } from "../context/AuthContext";
 import { useAgentsList, useTriggerExecution, type Agent, type TriggerExecutionInput } from "../services/useAgents";
 import { useDemandsList } from "../services/useDemands";
+import { useCommitAllArtifacts, useCreatePullRequest } from "../services/useGitActivity";
 
 /** SDD pipeline stages SpecKitProvider actually understands ("Modo B" — headless Claude Code). */
 const PIPELINE_STAGES = ["specify", "clarify", "plan", "checklist", "tasks", "analyze"] as const;
 
 /** spec User Story 9: list the Agent catalog and trigger an execution. */
 export function Agents() {
+  const { hasPermission } = useAuth();
   const { data: agents, isLoading } = useAgentsList();
   const { data: demands } = useDemandsList({ pageSize: 100 });
   const triggerExecution = useTriggerExecution();
   const { register, handleSubmit, reset } = useForm<TriggerExecutionInput>();
+
+  const [gitDemandId, setGitDemandId] = useState("");
+  const commitAll = useCommitAllArtifacts();
+  const createPullRequest = useCreatePullRequest();
 
   const columns: ColumnDef<Agent, unknown>[] = [
     { header: "Nome", accessorKey: "name" },
@@ -78,6 +86,72 @@ export function Agents() {
           </Button>
         </form>
       </section>
+
+      {(hasPermission("GIT_WRITE") || hasPermission("PR_CREATE")) && (
+        <section className="flex flex-col gap-4 rounded-lg border border-border bg-card p-5">
+          <h2 className="text-sm font-semibold text-foreground">Ações manuais de Git</h2>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="gitDemandId" className="text-sm font-medium text-foreground">
+              Demanda
+            </label>
+            <NativeSelect
+              id="gitDemandId"
+              value={gitDemandId}
+              onChange={(e) => setGitDemandId(e.target.value)}
+            >
+              <option value="">Selecione uma demanda…</option>
+              {demands?.items.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.title}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+          <div className="flex items-center gap-2">
+            {hasPermission("GIT_WRITE") && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!gitDemandId || commitAll.isPending}
+                onClick={() => commitAll.mutate(gitDemandId)}
+              >
+                Commit + Push
+              </Button>
+            )}
+            {hasPermission("PR_CREATE") && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!gitDemandId || createPullRequest.isPending}
+                onClick={() => createPullRequest.mutate(gitDemandId)}
+              >
+                Criar Pull Request
+              </Button>
+            )}
+          </div>
+
+          {commitAll.isSuccess && (
+            <ul className="flex flex-col gap-1 text-sm text-muted-foreground">
+              {commitAll.data.map((result) => (
+                <li key={result.artifactId}>
+                  Artefato {result.artifactId}:{" "}
+                  {"sha" in result && result.sha
+                    ? `commitado (${result.sha.slice(0, 7)})`
+                    : "skipped" in result && result.skipped
+                      ? "nada pendente"
+                      : `erro — ${"error" in result ? result.error : ""}`}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {createPullRequest.isSuccess && (
+            <p className="text-sm text-muted-foreground">
+              PR criado: {createPullRequest.data.externalReference} ({createPullRequest.data.status})
+            </p>
+          )}
+        </section>
+      )}
     </div>
   );
 }
