@@ -290,7 +290,19 @@ export class ExecutionsProcessor extends WorkerHost {
             "businessRequirements[], businessRules[], acceptanceCriteria[], flows[], " +
             "technicalRequirements[], identifiedArtifacts[], suggestedArtifacts[], risks[], " +
             "questions[], specifyMarkdown, planMarkdown, changeSummary: {rulesAdded[], " +
-            "artifactsImpacted[], apisImpacted[], dataImpacted[], suggestedTests[]}}.",
+            "artifactsImpacted[], apisImpacted[], dataImpacted[], suggestedTests[]}}.\n\n" +
+            "If `previousApprovedSpecify`/`previousApprovedPlan` are present in the context, " +
+            "this is an INCREMENT, not a fresh specification: treat them as the current " +
+            "approved baseline and produce `specifyMarkdown`/`planMarkdown` as a REVISION of " +
+            "that baseline that incorporates the change described in `currentIncrement.reason` " +
+            "and `humanInput`. Keep every section, requirement, and rule that the new " +
+            "reason/input does not affect exactly as it was — do not paraphrase or rewrite " +
+            "unaffected content. Only add, remove, or change what the new reason/input actually " +
+            "calls for, and list every concrete change in `changeSummary`. A revision that " +
+            "comes back nearly identical to the baseline, or one that rewrites unrelated " +
+            "sections, are both wrong. If `previousApprovedSpecify`/`previousApprovedPlan` are " +
+            "absent, there is no baseline yet — generate the specification from scratch using " +
+            "`humanInput` and the demand/project context.",
           prompt: JSON.stringify(context),
         });
         this.validateSpecificationProposal(proposal);

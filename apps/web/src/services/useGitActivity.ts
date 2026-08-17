@@ -25,6 +25,7 @@ export interface PullRequestItem {
   externalReference: string;
   demandId: string;
   status: string;
+  url: string | null;
   artifact: ArtifactRef | null;
 }
 
@@ -39,25 +40,38 @@ export function prStatusLabel(status: string): string {
   return PR_STATUS_LABELS[status] ?? status;
 }
 
-export function useBranchesList(page: number) {
+export interface GitActivityFilters {
+  demandId?: string;
+}
+
+export function useBranchesList(page: number, filters: GitActivityFilters = {}) {
+  const params = new URLSearchParams({ page: String(page), page_size: "20" });
+  if (filters.demandId) params.set("demand_id", filters.demandId);
   return useQuery({
-    queryKey: ["branches", { page }],
-    queryFn: () => apiGet<PaginatedResult<BranchItem>>(`/branches?page=${page}&page_size=20`),
+    queryKey: ["branches", { page, ...filters }],
+    queryFn: () => apiGet<PaginatedResult<BranchItem>>(`/branches?${params.toString()}`),
   });
 }
 
-export function useCommitsList(page: number) {
+export function useCommitsList(page: number, filters: GitActivityFilters = {}) {
+  const params = new URLSearchParams({ page: String(page), page_size: "20" });
+  if (filters.demandId) params.set("demand_id", filters.demandId);
   return useQuery({
-    queryKey: ["commits", { page }],
-    queryFn: () => apiGet<PaginatedResult<CommitItem>>(`/commits?page=${page}&page_size=20`),
+    queryKey: ["commits", { page, ...filters }],
+    queryFn: () => apiGet<PaginatedResult<CommitItem>>(`/commits?${params.toString()}`),
   });
 }
 
-export function usePullRequestsList(page: number) {
+export function usePullRequestsList(
+  page: number,
+  filters: GitActivityFilters & { status?: string } = {},
+) {
+  const params = new URLSearchParams({ page: String(page), page_size: "20" });
+  if (filters.demandId) params.set("demand_id", filters.demandId);
+  if (filters.status) params.set("status", filters.status);
   return useQuery({
-    queryKey: ["pull-requests", { page }],
-    queryFn: () =>
-      apiGet<PaginatedResult<PullRequestItem>>(`/pull-requests?page=${page}&page_size=20`),
+    queryKey: ["pull-requests", { page, ...filters }],
+    queryFn: () => apiGet<PaginatedResult<PullRequestItem>>(`/pull-requests?${params.toString()}`),
   });
 }
 
@@ -78,12 +92,31 @@ export function useCommitAllArtifacts() {
   });
 }
 
-/** manual "create pull request" trigger — Agentes screen. */
+export interface CreatePullRequestResult {
+  artifactId: string;
+  pullRequestId?: string;
+  externalReference?: string;
+  error?: string;
+  skipped?: true;
+}
+
+/** manual "create pull request" trigger — Agentes screen. One PR per eligible artifact/repo, not just the demand's first one. */
 export function useCreatePullRequest() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (demandId: string) => apiPost<PullRequestItem>(`/demands/${demandId}/pull-request`),
-    meta: { successMessage: "Pull Request criado." },
+    mutationFn: (demandId: string) =>
+      apiPost<CreatePullRequestResult[]>(`/demands/${demandId}/pull-request`),
+    meta: { successMessage: "Pull Requests processados." },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["pull-requests"] }),
+  });
+}
+
+/** "Sincronizar" row action — Atividade do Git screen. Re-fetches a single PR's status/URL from GitHub. */
+export function useSyncPullRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (pullRequestId: string) => apiPost<PullRequestItem>(`/pull-requests/${pullRequestId}/sync`),
+    meta: { successMessage: "Pull Request sincronizado." },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["pull-requests"] }),
   });
 }

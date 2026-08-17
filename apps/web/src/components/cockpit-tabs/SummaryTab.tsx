@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Modal, MarkdownEditor, DataTable } from "@software-factory/ui";
-import { Eye, Pencil, Plus } from "lucide-react";
+import { Download, Eye, Pencil, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "../../context/AuthContext";
 import { apiGet, apiPost } from "../../services/api";
@@ -190,7 +190,11 @@ function IncrementSnapshotModal({
           <p className="text-sm text-muted-foreground">Nenhum documento gerado ainda para esta demanda.</p>
         )}
         {specifications?.map((spec) => (
-          <IncrementDocumentSnapshot key={spec.id} specification={spec} incrementId={increment.id} />
+          <IncrementDocumentSnapshot
+            key={spec.id}
+            specification={spec}
+            increment={increment}
+          />
         ))}
       </div>
     </Modal>
@@ -199,17 +203,37 @@ function IncrementSnapshotModal({
 
 function IncrementDocumentSnapshot({
   specification,
-  incrementId,
+  increment,
 }: {
   specification: Specification;
-  incrementId: string;
+  increment: Increment;
 }) {
   const { data: versions } = useSpecificationVersionsList(specification.id);
-  const versionForIncrement = versions?.filter((v) => v.incrementId === incrementId).at(-1);
+  const versionForIncrement = versions?.filter((v) => v.incrementId === increment.id).at(-1);
 
   return (
     <section className="flex flex-col gap-2">
-      <h3 className="text-sm font-semibold text-foreground">{specification.documentType}</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-foreground">{specification.documentType}</h3>
+        {versionForIncrement && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            title="Baixar arquivo"
+            aria-label="Baixar arquivo"
+            onClick={() =>
+              downloadMarkdown(
+                `incremento-${increment.number}-${specification.documentType.toLowerCase()}.md`,
+                versionForIncrement.content,
+              )
+            }
+          >
+            <Download className="size-4" />
+          </Button>
+        )}
+      </div>
       {versionForIncrement ? (
         <MarkdownEditor value={versionForIncrement.content} onChange={() => {}} readOnly />
       ) : (
@@ -217,4 +241,16 @@ function IncrementDocumentSnapshot({
       )}
     </section>
   );
+}
+
+function downloadMarkdown(filename: string, content: string) {
+  const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
 }

@@ -844,6 +844,10 @@ model PullRequest {
   title             String
   description       String
   status            String  @default("OPEN")
+  // follow-up: the real GitHub PR URL — nullable, rows created before this
+  // field existed have none. Lets the UI link straight to the PR for review
+  // instead of the analyst reconstructing/hunting for it manually.
+  url               String?
 
   @@map("pull_requests")
 }

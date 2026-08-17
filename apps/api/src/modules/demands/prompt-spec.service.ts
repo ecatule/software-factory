@@ -49,7 +49,7 @@ export class PromptSpecService {
   }
 
   private buildConsolidatedContext(
-    demand: { title: string; description: string },
+    demand: { title: string },
     clientName: string,
     business: string,
     technical: string,
@@ -57,7 +57,11 @@ export class PromptSpecService {
     artifacts: { id: string; systemId: string; name: string; type: string; technology: string | null }[],
   ): string {
     const sections = [
-      `# CONTEXTO DA DEMANDA\n\n${demand.title}\n\n${demand.description}`,
+      // `demand.description` deliberately excluded — it's the ORIGINAL text
+      // from the demand's first round and drove the AI to generate
+      // requirements based on that instead of the current increment's own
+      // "INFORMAÇÕES DE NEGÓCIO"/"INSUMOS TÉCNICOS" below.
+      `# CONTEXTO DA DEMANDA\n\n${demand.title}`,
       `# CLIENTE\n\n${clientName}`,
       `# INFORMAÇÕES DE NEGÓCIO\n\n${business || "(não informado)"}`,
       `# INSUMOS TÉCNICOS\n\n${technical || "(não informado)"}`,

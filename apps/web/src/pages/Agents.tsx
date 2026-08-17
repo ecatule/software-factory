@@ -146,9 +146,18 @@ export function Agents() {
           )}
 
           {createPullRequest.isSuccess && (
-            <p className="text-sm text-muted-foreground">
-              PR criado: {createPullRequest.data.externalReference} ({createPullRequest.data.status})
-            </p>
+            <ul className="flex flex-col gap-1 text-sm text-muted-foreground">
+              {createPullRequest.data.map((result) => (
+                <li key={result.artifactId}>
+                  Artefato {result.artifactId}:{" "}
+                  {result.pullRequestId
+                    ? `PR criado (#${result.externalReference})`
+                    : result.skipped
+                      ? "já tinha PR para este artefato"
+                      : `erro — ${result.error}`}
+                </li>
+              ))}
+            </ul>
           )}
         </section>
       )}

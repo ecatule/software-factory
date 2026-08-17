@@ -166,6 +166,27 @@ export function SpecificationWorkspace() {
   const [technicalText, setTechnicalText] = useState("");
   const [technicalTextTouched, setTechnicalTextTouched] = useState(false);
 
+  // follow-up: "Informações de negócio"/"Insumos técnicos" are local state,
+  // scoped to this component instance — but `specificationId` (the route
+  // param) stays the SAME across every increment of a demand (one SPEC row
+  // is shared, see IncrementsService), so this component never remounts
+  // when a new increment starts. Without this, leftover text from a
+  // previous increment silently stayed in these fields and got copied into
+  // the NEXT increment's prompt alongside (or instead of) the new input.
+  // Only fires on an actual CHANGE (tracked via ref), never on first load.
+  const { data: increments } = useIncrementsList(demandId);
+  const currentIncrementId = increments?.[increments.length - 1]?.id;
+  const lastSeenIncrementId = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!currentIncrementId) return;
+    if (lastSeenIncrementId.current && lastSeenIncrementId.current !== currentIncrementId) {
+      setBusinessText("");
+      setTechnicalText("");
+      setTechnicalTextTouched(false);
+    }
+    lastSeenIncrementId.current = currentIncrementId;
+  }, [currentIncrementId]);
+
   // feature 003 follow-up: pre-fill the technical input with a # Branch de
   // Origem / # Tecnologias scaffold (the project's technologies, FR-016)
   // instead of a blank field — only once, and never once the analyst has

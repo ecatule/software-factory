@@ -5,8 +5,12 @@ import { PrismaService } from "../../common/prisma/prisma.service";
 export class IncrementsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** excludes deactivated increments — same convention as SpecificationVersion's `stAtivo: true` filtering elsewhere (see deactivateVersion). Otherwise a deactivated increment, if it happened to have the highest `number`, would keep being treated as "current" by callers that take the list's last item (e.g. SummaryTab.tsx). */
   list(demandId: string) {
-    return this.prisma.db.increment.findMany({ where: { demandId }, orderBy: { number: "asc" } });
+    return this.prisma.db.increment.findMany({
+      where: { demandId, stAtivo: true },
+      orderBy: { number: "asc" },
+    });
   }
 
   /**
@@ -65,10 +69,18 @@ export class IncrementsService {
       }),
     ]);
 
+    // `number` is unique per demand regardless of `stAtivo` (@@unique([demandId, number])
+    // is a hard DB constraint) — `current.number + 1` collides once a deactivated
+    // increment already occupies that number, so the next number is derived from the
+    // highest `number` ever used for this demand, active or not.
+    const highest = await this.prisma.db.increment.aggregate({
+      where: { demandId },
+      _max: { number: true },
+    });
     const increment = await this.prisma.db.increment.create({
       data: {
         demandId,
-        number: current.number + 1,
+        number: (highest._max.number ?? current.number) + 1,
         title,
         reason,
         baseSpecificationVersionId: latestSpecVersion?.id ?? latestPlanVersion?.id,

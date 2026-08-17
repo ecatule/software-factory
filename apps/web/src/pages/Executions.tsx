@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { DataTable, Modal, Pagination, Badge } from "@software-factory/ui";
 import type { ColumnDef } from "@tanstack/react-table";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/select";
+import { useAuth } from "../context/AuthContext";
 import {
   executionStatusLabel,
   pipelineStageLabel,
   useExecution,
   useExecutionsList,
+  useRetryExecution,
   type Execution,
 } from "../services/useExecutions";
 
@@ -27,10 +29,12 @@ function formatDateTime(value: string | null): string {
 
 /** spec User Story 10: cross-platform execution monitor. */
 export function Executions() {
+  const { hasPermission } = useAuth();
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState("");
   const { data, isLoading, refetch } = useExecutionsList(page, status || undefined);
   const [openExecutionId, setOpenExecutionId] = useState<string | null>(null);
+  const retryExecution = useRetryExecution();
   // follow-up: `pipelineStage` is updated live server-side as the
   // "developer" agent's multi-step pipeline (branches/cloning/safety-check/
   // tasks/analyze/checklist/implement) progresses — but this screen no
@@ -117,6 +121,18 @@ export function Executions() {
               <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive">
                 {openExecution.data.error}
               </p>
+            )}
+            {openExecution.data.status === "FAILED" && hasPermission("AGENT_EXECUTE") && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="self-start"
+                disabled={retryExecution.isPending}
+                onClick={() => retryExecution.mutate(openExecution.data!.id)}
+              >
+                <RotateCcw /> Reexecutar
+              </Button>
             )}
             <h3 className="text-sm font-semibold text-foreground">Entrada</h3>
             <pre className="overflow-x-auto rounded-md bg-secondary p-3 text-xs text-foreground">

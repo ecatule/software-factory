@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { apiGet } from "./api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiGet, apiPost } from "./api";
 import type { PaginatedResult } from "./types";
 
 export interface Execution {
@@ -84,5 +84,21 @@ export function useExecution(id: string | null, options?: { poll?: boolean }) {
       if (!poll) return false;
       return query.state.data && TERMINAL_STATUSES.has(query.state.data.status) ? false : POLL_INTERVAL_MS;
     },
+  });
+}
+
+/**
+ * `POST /executions/:id/retry` — for a "developer" agent execution that
+ * already reached `implement`/`commit` with the SPEC/PLAN it used still the
+ * current approved ones, `ExecutionsService.retry()` skips straight back to
+ * `implement` instead of re-running branches/cloning/safety-check/tasks/
+ * analyze/checklist from scratch (see executions.service.ts).
+ */
+export function useRetryExecution() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (executionId: string) => apiPost<Execution>(`/executions/${executionId}/retry`),
+    meta: { successMessage: "Execução reiniciada." },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["executions"] }),
   });
 }

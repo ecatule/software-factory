@@ -1,10 +1,12 @@
-import { Controller, Get, Inject, Param, Query, UseGuards } from "@nestjs/common";
+import { Controller, Get, Inject, Param, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import type { Prisma } from "@prisma/client";
 import { CODE_REPOSITORY_PROVIDER, type CodeRepositoryProvider } from "@software-factory/domain";
 import { JwtAuthGuard } from "../identity/auth/jwt-auth.guard";
+import { RequirePermission } from "../identity/guards/permissions.decorator";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { paginate } from "../../common/pagination/paginate";
+import { GitService } from "./git.service";
 
 @ApiTags("pull-requests")
 @ApiBearerAuth()
@@ -13,6 +15,7 @@ import { paginate } from "../../common/pagination/paginate";
 export class PullRequestsController {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly gitService: GitService,
     @Inject(CODE_REPOSITORY_PROVIDER)
     private readonly codeRepositoryProvider: CodeRepositoryProvider,
   ) {}
@@ -62,5 +65,12 @@ export class PullRequestsController {
       pullRequest.externalReference,
     );
     return { ...pullRequest, checks };
+  }
+
+  /** manual "Sincronizar" trigger (Atividade do Git screen) — re-fetches status/URL from GitHub. */
+  @Post(":id/sync")
+  @RequirePermission("PR_CREATE")
+  sync(@Param("id") id: string) {
+    return this.gitService.syncPullRequest(id);
   }
 }

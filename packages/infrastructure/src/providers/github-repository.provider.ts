@@ -19,6 +19,21 @@ interface GitHubConfig {
 }
 
 /**
+ * follow-up: GitHub's PR `state` is only ever "open"/"closed" (lowercase) —
+ * a merge is a `closed` state PLUS a separate `merged: true` boolean, never
+ * its own state value. `PullRequest.status` (and every consumer of it —
+ * PR_STATUS_LABELS, the dashboard's "PRs abertas" count, the Atividade do
+ * Git status filter) expects uppercase OPEN/MERGED/CLOSED, so both must be
+ * derived here rather than passing GitHub's raw `state` through unchanged
+ * (that stored lowercase "open", which never matched any `status: "OPEN"`
+ * filter — live-observed: the dashboard's open-PR count stayed 0).
+ */
+function prStatus(data: { state: string; merged?: boolean }): string {
+  if (data.merged) return "MERGED";
+  return data.state.toUpperCase();
+}
+
+/**
  * spec FR-018: the only place the platform talks to GitHub — both its REST
  * API (repository/PR/checks metadata) and the `git` CLI (clone/branch/
  * commit/push against a demand's local workspace clone). Used by the
@@ -150,12 +165,12 @@ export class GitHubRepositoryProvider implements CodeRepositoryProvider {
       method: "POST",
       body: JSON.stringify({ title, body: description, head: branch, base }),
     });
-    return { externalReference: String(data.number), url: data.html_url, status: data.state };
+    return { externalReference: String(data.number), url: data.html_url, status: prStatus(data) };
   }
 
   async getPullRequest(externalReference: string, prReference: string): Promise<PullRequestRef> {
     const data = await this.api(`/repos/${externalReference}/pulls/${prReference}`);
-    return { externalReference: String(data.number), url: data.html_url, status: data.state };
+    return { externalReference: String(data.number), url: data.html_url, status: prStatus(data) };
   }
 
   async getChecks(externalReference: string, prReference: string): Promise<CheckRef[]> {
