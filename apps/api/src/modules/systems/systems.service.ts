@@ -180,6 +180,34 @@ export class SystemsService {
     });
   }
 
+  /**
+   * "Todos os artefatos precisam ter um repositório linked" — one Repository
+   * row represents a whole git-host org base (e.g.
+   * "https://github.com/vexur-startup"), reused by every SystemArtifact in
+   * it (the actual per-repo identity is composed from the artifact's own
+   * `name` at usage time — see `composeOwnerRepo` in the dependency-analyzer
+   * and Developer Agent modules). Links it to every currently-unlinked
+   * ACTIVE artifact of this Sistema in one shot, same upsert-then-active
+   * pattern `updateArtifact` uses per-artifact — artifacts that already
+   * have at least one active repository link are left untouched.
+   */
+  async linkRepositoryToUnlinkedArtifacts(systemId: string, repositoryId: string) {
+    const unlinked = await this.prisma.db.systemArtifact.findMany({
+      where: { systemId, stAtivo: true, repositories: { none: { stAtivo: true } } },
+      select: { id: true },
+    });
+    await this.prisma.db.$transaction(
+      unlinked.map((artifact) =>
+        this.prisma.db.systemArtifactRepository.upsert({
+          where: { systemArtifactId_repositoryId: { systemArtifactId: artifact.id, repositoryId } },
+          update: { stAtivo: true },
+          create: { systemArtifactId: artifact.id, repositoryId },
+        }),
+      ),
+    );
+    return { linked: unlinked.length };
+  }
+
   private async getArtifact(id: string) {
     const artifact = await this.prisma.db.systemArtifact.findUnique({ where: { id } });
     if (!artifact) throw new NotFoundException(`SystemArtifact ${id} not found`);

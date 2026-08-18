@@ -962,3 +962,55 @@ model DemandSystemArtifact {
   @@id([demandId, systemArtifactId])
   @@map("demand_system_artifacts")
 }
+
+// ---------------------------------------------------------------------------
+// Mapa de Dependências — UI-triggered analysis runs: a clone-scan-cleanup job
+// per Artifact, tracked the same way AgentExecution tracks the SDD pipeline
+// (status + free-text `stage` polled by the frontend), plus one singleton
+// row for the branch used to check out every analyzed repository (global,
+// not per-artifact/repository — set once by an analyst on the Artefatos screen).
+// ---------------------------------------------------------------------------
+
+model DependencyAnalyzerSettings {
+  id            String   @id @default(uuid()) @db.Uuid
+  defaultBranch String   @map("default_branch")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  updatedBy     String?  @map("updated_by") @db.Uuid
+
+  @@map("dependency_analyzer_settings")
+}
+
+enum DependencyAnalysisRunStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model DependencyAnalysisRun {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  // references SystemArtifact (the reusable catalog, spec "artefatos ativos
+  // do sistema"), NOT the demand-scoped Artifact — no Prisma relation,
+  // same scalar-FK convention as AgentExecution.demandId.
+  systemArtifactId String                       @map("system_artifact_id") @db.Uuid
+  // snapshot of DependencyAnalyzerSettings.defaultBranch at the time this
+  // run was triggered — stays accurate even if the global default changes later.
+  branch           String
+  status           DependencyAnalysisRunStatus @default(QUEUED)
+  stage            String?
+  summary          Json?
+  error            String?
+  startedAt        DateTime?                    @map("started_at")
+  finishedAt       DateTime?                    @map("finished_at")
+
+  @@index([systemArtifactId])
+  @@map("dependency_analysis_runs")
+}

@@ -6,8 +6,10 @@ import { MarkdownEditor, DiffView, Badge, DataTable, Modal } from "@software-fac
 import {
   ArrowLeftRight,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Copy,
   Eye,
   RotateCcw,
@@ -41,6 +43,12 @@ import {
   type SystemArtifact,
 } from "../services/useSystems";
 import { useGeneratePromptSpec } from "../services/usePromptSpec";
+import {
+  useArtifactDependencyMapping,
+  useRelatedSystemArtifacts,
+  type RelatedSystemArtifact,
+} from "../services/useDependencyAnalyzer";
+import { DependencyMappingSummary } from "../components/DependencyMappingSummary";
 import { useAgentsList, useTriggerExecution } from "../services/useAgents";
 import { executionStatusLabel, useExecution, pipelineStageLabel } from "../services/useExecutions";
 import { useIncrementsList } from "../services/useIncrements";
@@ -585,7 +593,14 @@ function SystemSelection({ demandId }: { demandId: string }) {
   }, [artifactSearch]);
 
   const canWrite = hasPermission("DEMAND_SYSTEM_WRITE");
+  const canReadDependencyMap = hasPermission("DEPENDENCY_ANALYZER_READ");
   const selectedArtifactIds = new Set(selectedArtifacts.map((a) => a.id));
+
+  // "não possui conhecimento técnico para mapear os artefatos envolvidos" —
+  // only one artifact's dependency preview is expanded at a time (below the
+  // pill row, not per-pill — pills wrap in a flex row, an inline expansion
+  // per chip would be fragile).
+  const [expandedArtifactId, setExpandedArtifactId] = useState<string | null>(null);
 
   function toggleSystem(id: string) {
     setSelectedSystemIds((current) =>
@@ -605,6 +620,41 @@ function SystemSelection({ demandId }: { demandId: string }) {
 
   function removeArtifact(id: string) {
     setSelectedArtifacts((current) => current.filter((a) => a.id !== id));
+  }
+
+  /**
+   * "Adicionar selecionados" on the related-artifacts checklist suggested by
+   * the dependency graph (see `ArtifactDependencyPreview` below) — also
+   * checks each artifact's own Sistema, if it wasn't already selected, so
+   * the wizard's System checkboxes stay consistent with what's actually
+   * been pulled in. Batched (not one call per item) so a multi-select
+   * "Adicionar selecionados" only touches `selectedSystemIds` once per
+   * distinct System, not once per artifact.
+   */
+  function addRelatedArtifacts(items: RelatedSystemArtifact[]) {
+    const systemIdsToEnable = new Set<string>();
+    setSelectedArtifacts((current) => {
+      const next = [...current];
+      for (const related of items) {
+        if (!related.systemArtifactId || !related.systemArtifactName || !related.systemArtifactType) continue;
+        if (next.some((a) => a.id === related.systemArtifactId)) continue;
+        next.push({
+          id: related.systemArtifactId,
+          systemId: related.systemId ?? "",
+          name: related.systemArtifactName,
+          type: related.systemArtifactType,
+          technology: null,
+          description: null,
+          stAtivo: true,
+        });
+        if (related.systemId) systemIdsToEnable.add(related.systemId);
+      }
+      return next;
+    });
+    setSelectedSystemIds((current) => [
+      ...current,
+      ...[...systemIdsToEnable].filter((id) => !current.includes(id)),
+    ]);
   }
 
   async function saveSelection() {
@@ -674,6 +724,23 @@ function SystemSelection({ demandId }: { demandId: string }) {
                 className="flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1 text-sm text-secondary-foreground"
               >
                 {artifact.name} ({artifact.type})
+                {canReadDependencyMap && (
+                  <button
+                    type="button"
+                    title="Ver dependências"
+                    aria-label={`Ver dependências de ${artifact.name}`}
+                    onClick={() =>
+                      setExpandedArtifactId((current) => (current === artifact.id ? null : artifact.id))
+                    }
+                    className="grid size-4 place-items-center rounded-full bg-transparent text-muted-foreground hover:text-foreground"
+                  >
+                    {expandedArtifactId === artifact.id ? (
+                      <ChevronUp className="size-3" />
+                    ) : (
+                      <ChevronDown className="size-3" />
+                    )}
+                  </button>
+                )}
                 {canWrite && (
                   <button
                     type="button"
@@ -688,6 +755,10 @@ function SystemSelection({ demandId }: { demandId: string }) {
               </span>
             ))}
           </div>
+
+          {expandedArtifactId && (
+            <ArtifactDependencyPreview systemArtifactId={expandedArtifactId} onAddRelated={addRelatedArtifacts} />
+          )}
 
           {canWrite && (
             <div className="relative max-w-md">
@@ -745,6 +816,126 @@ function SystemSelection({ demandId }: { demandId: string }) {
       )}
       {saveMessage && <p className="text-sm font-medium text-success">{saveMessage}</p>}
     </section>
+  );
+}
+
+/**
+ * "O analista que está fazendo a especificação muitas vezes não possui
+ * conhecimento técnico para mapear os artefatos envolvidos" — shows what a
+ * selected Artefato calls/exposes (reusing the same evidence as the "Ver
+ * mapeamento" modal on Sistema → Detalhe) plus, when the graph can resolve
+ * it, which OTHER catalogued Artefatos it depends on, with a one-click
+ * "Adicionar" so the analyst can pull in artefatos they'd have no technical
+ * way of knowing about otherwise.
+ */
+function ArtifactDependencyPreview({
+  systemArtifactId,
+  onAddRelated,
+}: {
+  systemArtifactId: string;
+  onAddRelated: (related: RelatedSystemArtifact[]) => void;
+}) {
+  const { data: mapping, isLoading: isMappingLoading } = useArtifactDependencyMapping(systemArtifactId);
+  const { data: related, isLoading: isRelatedLoading } = useRelatedSystemArtifacts(systemArtifactId);
+  const [relatedFilter, setRelatedFilter] = useState("");
+  const [selectedRelatedIds, setSelectedRelatedIds] = useState<Set<string>>(new Set());
+
+  const filteredRelated = (related ?? []).filter((item) => {
+    if (!relatedFilter) return true;
+    const needle = relatedFilter.toLowerCase();
+    return (
+      item.method.toLowerCase().includes(needle) ||
+      item.url.toLowerCase().includes(needle) ||
+      (item.systemArtifactName?.toLowerCase().includes(needle) ?? false)
+    );
+  });
+  // dedupe by artifact — the graph can surface the same related artifact via
+  // several URLs; "select this artifact" should still be one checkbox, not one per URL.
+  const selectableIds = [
+    ...new Set(filteredRelated.map((item) => item.systemArtifactId).filter((id): id is string => id !== null)),
+  ];
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedRelatedIds.has(id));
+
+  function toggleSelected(id: string) {
+    setSelectedRelatedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function addSelected() {
+    const toAdd = filteredRelated.filter(
+      (item) => item.systemArtifactId !== null && selectedRelatedIds.has(item.systemArtifactId),
+    );
+    onAddRelated(toAdd);
+    setSelectedRelatedIds(new Set());
+  }
+
+  return (
+    <div className="flex flex-col gap-4 rounded-lg border border-border bg-card p-4">
+      {isMappingLoading && <p className="text-sm text-muted-foreground">Carregando…</p>}
+      {mapping && <DependencyMappingSummary mapping={mapping} />}
+
+      <section className="flex flex-col gap-2">
+        <h3 className="text-sm font-semibold text-foreground">Artefatos relacionados</h3>
+        {isRelatedLoading && <p className="text-sm text-muted-foreground">Carregando…</p>}
+        {related && related.length === 0 && (
+          <p className="text-sm text-muted-foreground">Nenhuma dependência entre artefatos catalogados encontrada.</p>
+        )}
+        {related && related.length > 0 && (
+          <>
+            <Input
+              type="search"
+              placeholder="Filtrar por método, URL ou artefato…"
+              value={relatedFilter}
+              onChange={(e) => setRelatedFilter(e.target.value)}
+            />
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={selectableIds.length === 0}
+                onClick={() => setSelectedRelatedIds(allSelected ? new Set() : new Set(selectableIds))}
+              >
+                {allSelected ? "Desmarcar todos" : "Selecionar todos"}
+              </Button>
+              <Button type="button" size="sm" disabled={selectedRelatedIds.size === 0} onClick={addSelected}>
+                Adicionar selecionados ({selectedRelatedIds.size})
+              </Button>
+            </div>
+            {filteredRelated.length === 0 && (
+              <p className="text-sm text-muted-foreground">Nenhum resultado para o filtro.</p>
+            )}
+            {filteredRelated.map((item, i) => (
+              <label
+                key={i}
+                className="flex items-center gap-2 border-b border-border pb-1 text-sm text-foreground"
+              >
+                <input
+                  type="checkbox"
+                  className="size-4 shrink-0 rounded border-input accent-primary disabled:opacity-30"
+                  disabled={!item.systemArtifactId}
+                  checked={item.systemArtifactId ? selectedRelatedIds.has(item.systemArtifactId) : false}
+                  onChange={() => item.systemArtifactId && toggleSelected(item.systemArtifactId)}
+                />
+                <span>
+                  {item.method} {item.url}
+                  {item.systemArtifactName && (
+                    <span className="text-muted-foreground"> → {item.systemArtifactName}</span>
+                  )}
+                  {!item.systemArtifactName && (
+                    <span className="text-muted-foreground"> (artefato ainda não catalogado)</span>
+                  )}
+                </span>
+              </label>
+            ))}
+          </>
+        )}
+      </section>
+    </div>
   );
 }
 

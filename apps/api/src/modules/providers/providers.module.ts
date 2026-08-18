@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import {
   CODE_REPOSITORY_PROVIDER,
   DEMAND_PROVIDER,
+  GRAPH_STORE_PROVIDER,
   LLM_PROVIDER,
   SDD_PROVIDER,
   type LLMProvider,
@@ -11,6 +12,7 @@ import {
   ClaudeProvider,
   GitHubRepositoryProvider,
   MondayDemandProvider,
+  Neo4jGraphStoreProvider,
   SpecKitProvider,
 } from "@software-factory/infrastructure";
 import { ProvidersController } from "./providers.controller";
@@ -68,6 +70,16 @@ import { resolveAuthProfilesFromEnv } from "./auth-profiles";
           token: process.env.GITHUB_TOKEN ?? "",
         }),
     },
+    {
+      provide: GRAPH_STORE_PROVIDER,
+      useFactory: () =>
+        new Neo4jGraphStoreProvider({
+          uri: process.env.NEO4J_URI ?? "bolt://localhost:7687",
+          username: process.env.NEO4J_USERNAME ?? "neo4j",
+          password: process.env.NEO4J_PASSWORD ?? "",
+          database: process.env.NEO4J_DATABASE || undefined,
+        }),
+    },
     ProviderConfigurationResolver,
   ],
   exports: [
@@ -75,6 +87,7 @@ import { resolveAuthProfilesFromEnv } from "./auth-profiles";
     LLM_PROVIDER,
     SDD_PROVIDER,
     CODE_REPOSITORY_PROVIDER,
+    GRAPH_STORE_PROVIDER,
     ProviderConfigurationResolver,
   ],
 })

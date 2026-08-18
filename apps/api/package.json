@@ -36,7 +36,10 @@
     "dotenv": "^16.4.5",
     "zod": "^3.23.8",
     "openid-client": "^5.7.0",
-    "cookie-parser": "^1.4.7"
+    "cookie-parser": "^1.4.7",
+    "ts-morph": "^24.0.0",
+    "fast-glob": "^3.3.2",
+    "@vue/compiler-sfc": "^3.4.38"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.4.5",

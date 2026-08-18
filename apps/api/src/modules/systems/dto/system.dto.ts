@@ -80,3 +80,9 @@ export class BulkCreateSystemArtifactsDto {
   @Type(() => CreateSystemArtifactDto)
   artifacts!: CreateSystemArtifactDto[];
 }
+
+/** follow-up: "todos os artefatos precisam ter um repositório linked" — bulk-link every active artifact of a Sistema that currently has none. */
+export class LinkRepositoryToUnlinkedArtifactsDto {
+  @IsString()
+  repositoryId!: string;
+}

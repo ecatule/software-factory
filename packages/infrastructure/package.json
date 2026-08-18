@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@software-factory/domain": "workspace:*",
-    "@software-factory/config": "workspace:*"
+    "@software-factory/config": "workspace:*",
+    "neo4j-driver": "^5.28.1"
   }
 }

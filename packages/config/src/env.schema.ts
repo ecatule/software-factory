@@ -24,6 +24,11 @@ export const envSchema = z.object({
   GITHUB_API_URL: z.string().url().optional(),
   GITHUB_TOKEN: z.string().optional(),
 
+  NEO4J_URI: z.string().optional(),
+  NEO4J_USERNAME: z.string().optional(),
+  NEO4J_PASSWORD: z.string().optional(),
+  NEO4J_DATABASE: z.string().optional(),
+
   LLM_PROVIDER: z.enum(["chatgpt", "claude"]).default("chatgpt"),
   OPENAI_API_KEY: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),

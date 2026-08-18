@@ -39,6 +39,9 @@ const PERMISSION_CATALOG = [
   "SYSTEM_ARTIFACT_WRITE",
   "DEMAND_SYSTEM_WRITE",
   "SPEC_PROMPT_GENERATE",
+  // Mapa de Dependências: trigger analysis / read the resulting graph.
+  "DEPENDENCY_ANALYZER_WRITE",
+  "DEPENDENCY_ANALYZER_READ",
 ] as const;
 
 const PROVIDER_CATALOG: { key: string; kind: ProviderKind }[] = [

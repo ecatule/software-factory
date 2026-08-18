@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { DataTable, FormField, Modal, Pagination, Badge } from "@software-factory/ui";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Pause, Pencil, Play, Plus, Search, Upload } from "lucide-react";
+import { Eye, GitBranch, Pause, Pencil, Play, Plus, Search, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/select";
@@ -12,6 +12,7 @@ import { useAuth } from "../context/AuthContext";
 import {
   useBulkCreateSystemArtifacts,
   useCreateSystemArtifact,
+  useLinkRepositoryToUnlinkedArtifacts,
   useSystem,
   useSystemArtifacts,
   useUpdateSystem,
@@ -21,6 +22,17 @@ import {
   type SystemArtifactInput,
 } from "../services/useSystems";
 import { useRepositoriesList } from "../services/useRepositories";
+import { DependencyMappingSummary } from "../components/DependencyMappingSummary";
+import {
+  dependencyRunStatusLabel,
+  dependencyStageLabel,
+  useArtifactDependencyMapping,
+  useDependencyAnalyzerSettings,
+  useLatestDependencyAnalysisRun,
+  useTriggerAllDependencyAnalysis,
+  useTriggerDependencyAnalysis,
+  useUpdateDependencyAnalyzerSettings,
+} from "../services/useDependencyAnalyzer";
 
 interface SystemFormValues {
   name: string;
@@ -135,6 +147,57 @@ function SystemArtifacts({ systemId }: { systemId: string }) {
   const { register, handleSubmit, reset } = useForm<ArtifactFormValues>();
   const canWrite = hasPermission("SYSTEM_ARTIFACT_WRITE");
 
+  const canWriteDependencyMap = hasPermission("DEPENDENCY_ANALYZER_WRITE");
+  const canReadDependencyMap = hasPermission("DEPENDENCY_ANALYZER_READ");
+  const { data: dependencySettings } = useDependencyAnalyzerSettings();
+  const updateDependencySettings = useUpdateDependencyAnalyzerSettings();
+  const [branchDraft, setBranchDraft] = useState("");
+  const [isEditingBranch, setIsEditingBranch] = useState(false);
+  const [progressArtifactId, setProgressArtifactId] = useState<string | null>(null);
+  const [mappingArtifactId, setMappingArtifactId] = useState<string | null>(null);
+  const triggerAnalysis = useTriggerDependencyAnalysis();
+  const triggerAllAnalysis = useTriggerAllDependencyAnalysis();
+  const [bulkTriggerMessage, setBulkTriggerMessage] = useState<string | null>(null);
+  const { data: progressRun } = useLatestDependencyAnalysisRun(progressArtifactId);
+  const { data: mapping, isLoading: isMappingLoading } = useArtifactDependencyMapping(mappingArtifactId);
+
+  const linkRepository = useLinkRepositoryToUnlinkedArtifacts(systemId);
+  const [isLinkingRepository, setIsLinkingRepository] = useState(false);
+  const [repositoryToLinkId, setRepositoryToLinkId] = useState("");
+  const [linkMessage, setLinkMessage] = useState<string | null>(null);
+
+  async function linkRepositoryToUnlinked() {
+    if (!repositoryToLinkId) return;
+    const result = await linkRepository.mutateAsync(repositoryToLinkId);
+    setLinkMessage(`${result.linked} artefato(s) vinculado(s).`);
+    setIsLinkingRepository(false);
+  }
+
+  function openBranchEditor() {
+    setBranchDraft(dependencySettings?.defaultBranch ?? "");
+    setIsEditingBranch(true);
+  }
+
+  async function saveBranch() {
+    if (!branchDraft.trim()) return;
+    await updateDependencySettings.mutateAsync(branchDraft.trim());
+    setIsEditingBranch(false);
+  }
+
+  async function triggerMapping(systemArtifactId: string) {
+    setProgressArtifactId(systemArtifactId);
+    await triggerAnalysis.mutateAsync(systemArtifactId);
+  }
+
+  async function triggerAllMapping() {
+    setBulkTriggerMessage(null);
+    const result = await triggerAllAnalysis.mutateAsync(systemId);
+    setBulkTriggerMessage(
+      `${result.triggered.length} análise(s) iniciada(s)` +
+        (result.skipped.length > 0 ? `, ${result.skipped.length} já em andamento (ignorada(s)).` : "."),
+    );
+  }
+
   function openCreate() {
     reset({ name: "", type: ARTIFACT_TYPES[0], technology: "", description: "", repositoryIds: [] });
     setEditingArtifact(null);
@@ -199,34 +262,71 @@ function SystemArtifacts({ systemId }: { systemId: string }) {
     },
     {
       header: "Ações",
-      cell: ({ row }) =>
-        canWrite && (
+      cell: ({ row }) => {
+        const systemArtifactId = row.original.id;
+        const isThisRunning =
+          progressArtifactId === systemArtifactId &&
+          progressRun &&
+          !["COMPLETED", "FAILED"].includes(progressRun.status);
+        return (
           <span className="flex items-center gap-1">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-8"
-              title="Editar"
-              aria-label="Editar"
-              onClick={() => openEdit(row.original)}
-            >
-              <Pencil className="size-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-8"
-              title={row.original.stAtivo ? "Desativar" : "Ativar"}
-              aria-label={row.original.stAtivo ? "Desativar" : "Ativar"}
-              disabled={updateArtifact.isPending}
-              onClick={() => toggleActive(row.original)}
-            >
-              {row.original.stAtivo ? <Pause className="size-4" /> : <Play className="size-4" />}
-            </Button>
+            {canWrite && (
+              <>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8"
+                  title="Editar"
+                  aria-label="Editar"
+                  onClick={() => openEdit(row.original)}
+                >
+                  <Pencil className="size-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8"
+                  title={row.original.stAtivo ? "Desativar" : "Ativar"}
+                  aria-label={row.original.stAtivo ? "Desativar" : "Ativar"}
+                  disabled={updateArtifact.isPending}
+                  onClick={() => toggleActive(row.original)}
+                >
+                  {row.original.stAtivo ? <Pause className="size-4" /> : <Play className="size-4" />}
+                </Button>
+              </>
+            )}
+            {canWriteDependencyMap && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                title="Mapear dependências"
+                aria-label="Mapear dependências"
+                disabled={!dependencySettings?.defaultBranch || Boolean(isThisRunning)}
+                onClick={() => triggerMapping(systemArtifactId)}
+              >
+                <GitBranch className="size-4" />
+              </Button>
+            )}
+            {canReadDependencyMap && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                title="Ver mapeamento"
+                aria-label="Ver mapeamento"
+                onClick={() => setMappingArtifactId(systemArtifactId)}
+              >
+                <Eye className="size-4" />
+              </Button>
+            )}
           </span>
-        ),
+        );
+      },
     },
   ];
 
@@ -253,6 +353,80 @@ function SystemArtifacts({ systemId }: { systemId: string }) {
           </Button>
         )}
       </div>
+      {canWriteDependencyMap &&
+        (isEditingBranch ? (
+          <span className="flex items-center gap-1.5">
+            <Input
+              value={branchDraft}
+              onChange={(e) => setBranchDraft(e.target.value)}
+              placeholder="ex: main"
+              className="h-9 w-40"
+            />
+            <Button type="button" size="sm" onClick={saveBranch} disabled={updateDependencySettings.isPending}>
+              Salvar
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setIsEditingBranch(false)}>
+              Cancelar
+            </Button>
+          </span>
+        ) : (
+          <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            Branch padrão para mapeamento de dependências:{" "}
+            <strong className="text-foreground">{dependencySettings?.defaultBranch ?? "não configurada"}</strong>
+            <Button type="button" variant="ghost" size="sm" onClick={openBranchEditor}>
+              Editar
+            </Button>
+          </span>
+        ))}
+      {canWriteDependencyMap && (
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!dependencySettings?.defaultBranch || triggerAllAnalysis.isPending}
+            onClick={triggerAllMapping}
+          >
+            <GitBranch className="size-4" /> Mapear todos os artefatos ativos
+          </Button>
+          {bulkTriggerMessage && <p className="text-sm text-muted-foreground">{bulkTriggerMessage}</p>}
+        </div>
+      )}
+      {canWrite &&
+        (isLinkingRepository ? (
+          <div className="flex items-center gap-2">
+            <NativeSelect
+              value={repositoryToLinkId}
+              onChange={(e) => setRepositoryToLinkId(e.target.value)}
+              className="h-9 w-64"
+            >
+              <option value="">Selecione um repositório…</option>
+              {activeRepositories.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.externalReference}
+                </option>
+              ))}
+            </NativeSelect>
+            <Button
+              type="button"
+              size="sm"
+              onClick={linkRepositoryToUnlinked}
+              disabled={!repositoryToLinkId || linkRepository.isPending}
+            >
+              Vincular
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setIsLinkingRepository(false)}>
+              Cancelar
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => setIsLinkingRepository(true)}>
+              Vincular repositório aos artefatos sem repositório
+            </Button>
+            {linkMessage && <p className="text-sm text-muted-foreground">{linkMessage}</p>}
+          </div>
+        ))}
       {toggleError && <p className="text-sm font-medium text-destructive">{toggleError}</p>}
       {toggleMessage && <p className="text-sm font-medium text-success">{toggleMessage}</p>}
 
@@ -265,6 +439,42 @@ function SystemArtifacts({ systemId }: { systemId: string }) {
       {data && (
         <Pagination page={data.page} pageSize={data.page_size} total={data.total} onPageChange={setPage} />
       )}
+
+      <Modal
+        title="Mapeamento de dependências"
+        isOpen={progressArtifactId !== null}
+        onClose={() => setProgressArtifactId(null)}
+      >
+        {progressRun && (
+          <div className="flex flex-col gap-2 text-sm text-foreground">
+            <p>
+              Status: <Badge label={dependencyRunStatusLabel(progressRun.status)} />{" "}
+              {dependencyStageLabel(progressRun.stage)}
+            </p>
+            <p className="text-muted-foreground">Branch: {progressRun.branch}</p>
+            {progressRun.status === "COMPLETED" && progressRun.summary && (
+              <ul className="flex flex-col gap-1">
+                <li>Arquivos escaneados: {progressRun.summary.filesScanned}</li>
+                <li>Telas encontradas: {progressRun.summary.screensFound}</li>
+                <li>Chamadas de API encontradas: {progressRun.summary.apiCallsFound}</li>
+                <li>Rotas de backend encontradas: {progressRun.summary.backendRoutesFound}</li>
+              </ul>
+            )}
+            {progressRun.status === "FAILED" && (
+              <p className="text-destructive">{progressRun.error ?? "A análise falhou."}</p>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        title="Mapeamento realizado"
+        isOpen={mappingArtifactId !== null}
+        onClose={() => setMappingArtifactId(null)}
+      >
+        {isMappingLoading && <p className="text-sm text-muted-foreground">Carregando…</p>}
+        {mapping && <DependencyMappingSummary mapping={mapping} />}
+      </Modal>
 
       <Modal
         title={editingArtifact ? "Editar artefato" : "Novo artefato"}

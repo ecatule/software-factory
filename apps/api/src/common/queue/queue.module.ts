@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { BullModule } from "@nestjs/bullmq";
 
 export const EXECUTIONS_QUEUE = "executions";
+export const DEPENDENCY_ANALYSIS_QUEUE = "dependency-analysis";
 
 /**
  * research.md §5: BullMQ on Redis backs AgentExecution processing
@@ -21,6 +22,7 @@ export const EXECUTIONS_QUEUE = "executions";
       },
     }),
     BullModule.registerQueue({ name: EXECUTIONS_QUEUE }),
+    BullModule.registerQueue({ name: DEPENDENCY_ANALYSIS_QUEUE }),
   ],
   exports: [BullModule],
 })

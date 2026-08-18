@@ -25,6 +25,7 @@ import { TechnologiesModule } from "./modules/technologies/technologies.module";
 import { IncrementsModule } from "./modules/increments/increments.module";
 import { RolesModule } from "./modules/roles/roles.module";
 import { SystemsModule } from "./modules/systems/systems.module";
+import { DependencyAnalyzerModule } from "./modules/dependency-analyzer/dependency-analyzer.module";
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { SystemsModule } from "./modules/systems/systems.module";
     IncrementsModule,
     RolesModule,
     SystemsModule,
+    DependencyAnalyzerModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

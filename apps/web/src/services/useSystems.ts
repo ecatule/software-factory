@@ -130,6 +130,22 @@ export function useBulkCreateSystemArtifacts(systemId: string) {
   });
 }
 
+/**
+ * "Todos os artefatos precisam ter um repositório linked" — bulk-links a
+ * chosen Repository to every currently ACTIVE artifact of this Sistema that
+ * has no active repository link yet (artifacts already linked are
+ * untouched). Returns how many got linked.
+ */
+export function useLinkRepositoryToUnlinkedArtifacts(systemId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (repositoryId: string) =>
+      apiPost<{ linked: number }>(`/systems/${systemId}/artifacts/link-repository`, { repositoryId }),
+    meta: { successMessage: "Vínculo de repositório atualizado." },
+    onSuccess: () => invalidateSystemArtifacts(queryClient, systemId),
+  });
+}
+
 /** feature 005 User Story 2: Cliente×Sistema association (N:N). */
 export function useClientSystems(clientId: string | null) {
   return useQuery({

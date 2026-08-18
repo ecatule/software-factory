@@ -7,6 +7,7 @@ import {
   BulkCreateSystemArtifactsDto,
   CreateSystemArtifactDto,
   CreateSystemDto,
+  LinkRepositoryToUnlinkedArtifactsDto,
   UpdateSystemArtifactDto,
   UpdateSystemDto,
 } from "./dto/system.dto";
@@ -80,5 +81,15 @@ export class SystemsController {
   @RequirePermission("SYSTEM_ARTIFACT_WRITE")
   updateArtifact(@Param("id") id: string, @Body() dto: UpdateSystemArtifactDto) {
     return this.systemsService.updateArtifact(id, dto);
+  }
+
+  /** "Vincular repositório aos artefatos sem repositório" — bulk-fix for artifacts missing a repository link. */
+  @Post("systems/:id/artifacts/link-repository")
+  @RequirePermission("SYSTEM_ARTIFACT_WRITE")
+  linkRepositoryToUnlinkedArtifacts(
+    @Param("id") id: string,
+    @Body() dto: LinkRepositoryToUnlinkedArtifactsDto,
+  ) {
+    return this.systemsService.linkRepositoryToUnlinkedArtifacts(id, dto.repositoryId);
   }
 }
