@@ -27,6 +27,7 @@ import {
   dependencyRunStatusLabel,
   dependencyStageLabel,
   useArtifactDependencyMapping,
+  useDependencyAnalysisSystemStatus,
   useDependencyAnalyzerSettings,
   useLatestDependencyAnalysisRun,
   useTriggerAllDependencyAnalysis,
@@ -158,6 +159,11 @@ function SystemArtifacts({ systemId }: { systemId: string }) {
   const triggerAnalysis = useTriggerDependencyAnalysis();
   const triggerAllAnalysis = useTriggerAllDependencyAnalysis();
   const [bulkTriggerMessage, setBulkTriggerMessage] = useState<string | null>(null);
+  const {
+    data: analysisStatus,
+    refetch: refetchAnalysisStatus,
+    isFetching: isFetchingAnalysisStatus,
+  } = useDependencyAnalysisSystemStatus(systemId);
   const { data: progressRun } = useLatestDependencyAnalysisRun(progressArtifactId);
   const { data: mapping, isLoading: isMappingLoading } = useArtifactDependencyMapping(mappingArtifactId);
 
@@ -379,17 +385,39 @@ function SystemArtifacts({ systemId }: { systemId: string }) {
           </span>
         ))}
       {canWriteDependencyMap && (
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={!dependencySettings?.defaultBranch || triggerAllAnalysis.isPending}
-            onClick={triggerAllMapping}
-          >
-            <GitBranch className="size-4" /> Mapear todos os artefatos ativos
-          </Button>
-          {bulkTriggerMessage && <p className="text-sm text-muted-foreground">{bulkTriggerMessage}</p>}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!dependencySettings?.defaultBranch || triggerAllAnalysis.isPending}
+              onClick={triggerAllMapping}
+            >
+              <GitBranch className="size-4" /> Mapear todos os artefatos ativos
+            </Button>
+            {bulkTriggerMessage && <p className="text-sm text-muted-foreground">{bulkTriggerMessage}</p>}
+          </div>
+          {canReadDependencyMap && (
+            <div className="flex items-center gap-3">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => refetchAnalysisStatus()}
+                disabled={isFetchingAnalysisStatus}
+              >
+                Atualizar status
+              </Button>
+              {analysisStatus && (
+                <p className="text-sm text-muted-foreground">
+                  {analysisStatus.total} total ativos · {analysisStatus.completed} concluídas ·{" "}
+                  {analysisStatus.running} em andamento · {analysisStatus.failed} erro ·{" "}
+                  {analysisStatus.pending} a processar
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
       {canWrite &&

@@ -724,6 +724,10 @@ function SystemSelection({ demandId }: { demandId: string }) {
                 className="flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1 text-sm text-secondary-foreground"
               >
                 {artifact.name} ({artifact.type})
+                {/* "usuários conhecem a Tela pela descrição do menu, não pelo nome técnico" */}
+                {artifact.description && artifact.description !== artifact.name && (
+                  <span className="text-secondary-foreground/70"> — {artifact.description}</span>
+                )}
                 {canReadDependencyMap && (
                   <button
                     type="button"
@@ -765,7 +769,7 @@ function SystemSelection({ demandId }: { demandId: string }) {
               <h3 className="mb-1.5 text-sm font-semibold text-foreground">Adicionar artefato</h3>
               <Input
                 type="search"
-                placeholder="Buscar por nome…"
+                placeholder="Buscar por nome ou descrição…"
                 value={artifactSearch}
                 onFocus={() => setIsSearchOpen(true)}
                 onBlur={() => setTimeout(() => setIsSearchOpen(false), 150)}
@@ -789,6 +793,9 @@ function SystemSelection({ demandId }: { demandId: string }) {
                         className="w-full rounded-none bg-transparent px-3 py-1.5 text-left text-sm text-foreground hover:bg-accent"
                       >
                         {artifact.name} ({artifact.type})
+                        {artifact.description && artifact.description !== artifact.name && (
+                          <span className="text-muted-foreground"> — {artifact.description}</span>
+                        )}
                       </button>
                     </li>
                   ))}

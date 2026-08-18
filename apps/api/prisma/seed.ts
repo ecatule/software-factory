@@ -42,6 +42,9 @@ const PERMISSION_CATALOG = [
   // Mapa de Dependências: trigger analysis / read the resulting graph.
   "DEPENDENCY_ANALYZER_WRITE",
   "DEPENDENCY_ANALYZER_READ",
+  // GMUD (Gestão de Mudanças): open a deploy request on Monday / read past requests.
+  "GMUD_WRITE",
+  "GMUD_READ",
 ] as const;
 
 const PROVIDER_CATALOG: { key: string; kind: ProviderKind }[] = [

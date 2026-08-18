@@ -11,6 +11,7 @@ import type { Client } from "../services/types";
 interface ClientFormValues {
   name: string;
   externalReference?: string;
+  mondayClientLabel?: string;
 }
 
 /** spec User Story 3: list, create, and edit Clients. */
@@ -28,12 +29,16 @@ export function Clients() {
   ];
 
   function openCreate() {
-    reset({ name: "", externalReference: "" });
+    reset({ name: "", externalReference: "", mondayClientLabel: "" });
     setIsCreating(true);
   }
 
   function openEdit(client: Client) {
-    reset({ name: client.name, externalReference: client.externalReference ?? "" });
+    reset({
+      name: client.name,
+      externalReference: client.externalReference ?? "",
+      mondayClientLabel: client.mondayClientLabel ?? "",
+    });
     setEditing(client);
   }
 
@@ -75,6 +80,13 @@ export function Clients() {
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <FormField label="Nome" registration={register("name", { required: true })} />
           <FormField label="Referência externa" registration={register("externalReference")} />
+          <div className="flex flex-col gap-1.5">
+            <FormField label="Rótulo no Monday (GMUD)" registration={register("mondayClientLabel")} />
+            <p className="text-xs text-muted-foreground">
+              Opcional — use quando o nome deste Cliente não bater com a opção já cadastrada no dropdown de
+              Cliente do board de Gestão de Mudanças.
+            </p>
+          </div>
           <Button type="submit" className="self-start">
             Salvar
           </Button>

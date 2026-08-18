@@ -16,6 +16,7 @@ import { Tests } from "./pages/Tests";
 import { Repositories } from "./pages/Repositories";
 import { GitActivity } from "./pages/GitActivity";
 import { Audit } from "./pages/Audit";
+import { Gmud } from "./pages/Gmud";
 import { Settings } from "./pages/Settings";
 import { DemandCockpit } from "./pages/DemandCockpit";
 import { ProtectedRoute } from "./routes/ProtectedRoute";
@@ -46,6 +47,14 @@ export function App() {
                 <Route path="/tests" element={<Tests />} />
                 <Route path="/repositories" element={<Repositories />} />
                 <Route path="/git" element={<GitActivity />} />
+                <Route
+                  path="/governance/gmud"
+                  element={
+                    <ProtectedRoute permission="GMUD_READ">
+                      <Gmud />
+                    </ProtectedRoute>
+                  }
+                />
                 <Route
                   path="/audit"
                   element={

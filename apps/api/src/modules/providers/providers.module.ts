@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import {
+  CHANGE_MANAGEMENT_PROVIDER,
   CODE_REPOSITORY_PROVIDER,
   DEMAND_PROVIDER,
   GRAPH_STORE_PROVIDER,
@@ -11,6 +12,7 @@ import {
   ChatGPTProvider,
   ClaudeProvider,
   GitHubRepositoryProvider,
+  MondayChangeManagementProvider,
   MondayDemandProvider,
   Neo4jGraphStoreProvider,
   SpecKitProvider,
@@ -38,6 +40,17 @@ import { resolveAuthProfilesFromEnv } from "./auth-profiles";
       provide: DEMAND_PROVIDER,
       useFactory: () =>
         new MondayDemandProvider({
+          apiUrl: process.env.MONDAY_API_URL ?? "https://api.monday.com/v2",
+          apiToken: process.env.MONDAY_API_TOKEN ?? "",
+        }),
+    },
+    {
+      // GMUD: same Monday account/token as DEMAND_PROVIDER above, reused —
+      // not a separate credential, just a different capability (writes to
+      // a fixed change-management board instead of reading a demand board).
+      provide: CHANGE_MANAGEMENT_PROVIDER,
+      useFactory: () =>
+        new MondayChangeManagementProvider({
           apiUrl: process.env.MONDAY_API_URL ?? "https://api.monday.com/v2",
           apiToken: process.env.MONDAY_API_TOKEN ?? "",
         }),
@@ -84,6 +97,7 @@ import { resolveAuthProfilesFromEnv } from "./auth-profiles";
   ],
   exports: [
     DEMAND_PROVIDER,
+    CHANGE_MANAGEMENT_PROVIDER,
     LLM_PROVIDER,
     SDD_PROVIDER,
     CODE_REPOSITORY_PROVIDER,

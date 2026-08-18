@@ -117,6 +117,7 @@ export interface Client {
   id: string;
   name: string;
   externalReference?: string | null;
+  mondayClientLabel?: string | null;
   version: number;
 }
 

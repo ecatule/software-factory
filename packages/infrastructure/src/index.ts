@@ -1,4 +1,5 @@
 export * from "./providers/monday-demand.provider";
+export * from "./providers/monday-change-management.provider";
 export * from "./providers/chatgpt.provider";
 export * from "./providers/claude.provider";
 export * from "./providers/speckit.provider";

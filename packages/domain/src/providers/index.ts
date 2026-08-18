@@ -1,4 +1,5 @@
 export * from "./demand-provider";
+export * from "./change-management-provider";
 export * from "./llm-provider";
 export * from "./sdd-provider";
 export * from "./code-repository-provider";

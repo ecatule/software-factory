@@ -7,6 +7,10 @@ export class CreateClientDto {
   @IsOptional()
   @IsString()
   externalReference?: string;
+
+  @IsOptional()
+  @IsString()
+  mondayClientLabel?: string;
 }
 
 export class UpdateClientDto {
@@ -17,4 +21,8 @@ export class UpdateClientDto {
   @IsOptional()
   @IsString()
   externalReference?: string;
+
+  @IsOptional()
+  @IsString()
+  mondayClientLabel?: string;
 }

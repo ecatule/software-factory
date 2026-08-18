@@ -17,6 +17,7 @@ import {
   type LucideIcon,
   Package,
   PlayCircle,
+  Rocket,
   Settings as SettingsIcon,
   ShieldCheck,
 } from "lucide-react";
@@ -70,6 +71,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Governança",
     items: [
       { label: "Atividade do Git", to: "/git", icon: Activity },
+      { label: "GMUD", to: "/governance/gmud", icon: Rocket, permission: "GMUD_READ" },
       { label: "Auditoria", to: "/audit", icon: ShieldCheck, permission: "AUDIT_READ" },
       { label: "Configurações", to: "/settings", icon: SettingsIcon, roles: ["admin"] },
     ],

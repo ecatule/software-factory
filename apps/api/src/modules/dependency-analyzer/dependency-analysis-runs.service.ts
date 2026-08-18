@@ -17,6 +17,15 @@ export interface BulkTriggerResult {
   skipped: Array<{ systemArtifactId: string; reason: string }>;
 }
 
+export interface SystemAnalysisStatus {
+  total: number;
+  completed: number;
+  running: number;
+  failed: number;
+  /** QUEUED runs plus artifacts that have never been analyzed at all yet. */
+  pending: number;
+}
+
 const ACTIVE_STATUSES: DependencyAnalysisRunStatus[] = ["QUEUED", "RUNNING"];
 
 /**
@@ -76,6 +85,44 @@ export class DependencyAnalysisRunsService {
       triggered.push(artifact.id);
     }
     return { triggered, skipped };
+  }
+
+  /**
+   * "N Total ativos, N Concluídas, N Em andamento, N Erro, N a Processar" —
+   * a manual-refresh status check for "Mapear todos os artefatos ativos"
+   * (no auto-polling — same reasoning `useExecution`'s doc-comment gives:
+   * continuously hitting the API in the background is unwanted; the
+   * frontend calls this on an explicit "Atualizar status" click instead).
+   * Counts by each artifact's LATEST run only — an artifact with several
+   * past runs is counted once, by its most recent outcome.
+   */
+  async getSystemStatus(systemId: string): Promise<SystemAnalysisStatus> {
+    const artifacts = await this.prisma.db.systemArtifact.findMany({
+      where: { systemId, stAtivo: true, repositories: { some: { stAtivo: true } } },
+      select: { id: true },
+    });
+    const artifactIds = artifacts.map((a) => a.id);
+
+    const runs = await this.prisma.db.dependencyAnalysisRun.findMany({
+      where: { systemArtifactId: { in: artifactIds } },
+      orderBy: { createdAt: "desc" },
+      select: { systemArtifactId: true, status: true },
+    });
+    const latestByArtifact = new Map<string, DependencyAnalysisRunStatus>();
+    for (const run of runs) {
+      if (!latestByArtifact.has(run.systemArtifactId)) latestByArtifact.set(run.systemArtifactId, run.status);
+    }
+
+    let completed = 0;
+    let running = 0;
+    let failed = 0;
+    for (const status of latestByArtifact.values()) {
+      if (status === "COMPLETED") completed += 1;
+      else if (status === "RUNNING") running += 1;
+      else if (status === "FAILED") failed += 1;
+    }
+    const total = artifactIds.length;
+    return { total, completed, running, failed, pending: total - completed - running - failed };
   }
 
   async getLatestForArtifact(systemArtifactId: string) {

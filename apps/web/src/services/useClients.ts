@@ -12,7 +12,7 @@ export function useClientsList() {
 export function useCreateClient() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { name: string; externalReference?: string }) =>
+    mutationFn: (input: { name: string; externalReference?: string; mondayClientLabel?: string }) =>
       apiPost<Client>("/clients", input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["clients"] }),
   });
@@ -21,8 +21,15 @@ export function useCreateClient() {
 export function useUpdateClient() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...input }: { id: string; name?: string; externalReference?: string }) =>
-      apiPatch<Client>(`/clients/${id}`, input),
+    mutationFn: ({
+      id,
+      ...input
+    }: {
+      id: string;
+      name?: string;
+      externalReference?: string;
+      mondayClientLabel?: string;
+    }) => apiPatch<Client>(`/clients/${id}`, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["clients"] }),
   });
 }

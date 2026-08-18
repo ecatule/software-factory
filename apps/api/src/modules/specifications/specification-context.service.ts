@@ -99,7 +99,18 @@ export class SpecificationContextService {
         version: pt.technology.techVersion,
       })),
       repositories: repositories.map((r) => ({ id: r.id, externalReference: r.externalReference })),
-      artifacts: artifacts.map((a) => ({ name: a.name, type: a.type, technology: a.technology, status: a.status })),
+      // `description` is often how business users actually know a Tela
+      // (its menu label, e.g. "Relacionamento com cliente") rather than its
+      // technical component name — already copied onto `Artifact` at
+      // creation time (see `DemandsService.ensureArtifactsForSystemArtifacts`),
+      // just wasn't reaching the AI context until now.
+      artifacts: artifacts.map((a) => ({
+        name: a.name,
+        type: a.type,
+        technology: a.technology,
+        status: a.status,
+        description: a.description,
+      })),
       // "artefatos ativos do sistema" (Mapa de Dependências) selected for
       // this demand, summarized — real API calls/exposed routes the AI can
       // ground the SPEC/PLAN in, so a non-technical analyst's selection

@@ -54,7 +54,14 @@ export class PromptSpecService {
     business: string,
     technical: string,
     systems: { id: string; name: string }[],
-    artifacts: { id: string; systemId: string; name: string; type: string; technology: string | null }[],
+    artifacts: {
+      id: string;
+      systemId: string;
+      name: string;
+      type: string;
+      technology: string | null;
+      description: string | null;
+    }[],
   ): string {
     const sections = [
       // `demand.description` deliberately excluded — it's the ORIGINAL text
@@ -75,7 +82,13 @@ export class PromptSpecService {
                 const systemArtifacts = artifacts.filter((a) => a.systemId === system.id);
                 if (!systemArtifacts.length) return null;
                 const lines = systemArtifacts
-                  .map((a) => `  - ${a.name} (${a.type}${a.technology ? `, ${a.technology}` : ""})`)
+                  .map((a) => {
+                    // "usuários conhecem a Tela pela descrição do menu, não
+                    // pelo nome técnico" — só acrescenta quando existir e
+                    // for diferente do nome, pra não repetir à toa.
+                    const label = a.description && a.description !== a.name ? ` — ${a.description}` : "";
+                    return `  - ${a.name}${label} (${a.type}${a.technology ? `, ${a.technology}` : ""})`;
+                  })
                   .join("\n");
                 return `Sistema: ${system.name}\n${lines}`;
               })

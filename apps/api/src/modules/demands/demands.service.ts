@@ -329,7 +329,20 @@ export class DemandsService {
             where: {
               systemId: { in: resolvedSystemIds },
               stAtivo: true,
-              ...(search ? { name: { contains: search, mode: "insensitive" as const } } : {}),
+              // follow-up: a Tela is often known to business users by its
+              // menu label (`description`, e.g. "Relacionamento com
+              // cliente"), not its technical component name
+              // ("vexur-operacao-contrato-adesao") — searching only `name`
+              // made it unfindable by the label a non-technical analyst
+              // actually knows.
+              ...(search
+                ? {
+                    OR: [
+                      { name: { contains: search, mode: "insensitive" as const } },
+                      { description: { contains: search, mode: "insensitive" as const } },
+                    ],
+                  }
+                : {}),
             },
             orderBy: { name: "asc" },
             take: 50,
@@ -419,11 +432,11 @@ export class DemandsService {
     for (const systemArtifact of systemArtifacts) {
       if (systemArtifact.repositories.length === 0) continue;
 
-      const artifact =
-        (await this.prisma.db.artifact.findFirst({
-          where: { demandId, name: systemArtifact.name },
-        })) ??
-        (await this.prisma.db.artifact.create({
+      let artifact = await this.prisma.db.artifact.findFirst({
+        where: { demandId, name: systemArtifact.name },
+      });
+      if (!artifact) {
+        artifact = await this.prisma.db.artifact.create({
           data: {
             demandId,
             name: systemArtifact.name,
@@ -431,7 +444,20 @@ export class DemandsService {
             technology: systemArtifact.technology,
             description: systemArtifact.description,
           },
-        }));
+        });
+      } else if (artifact.description !== systemArtifact.description) {
+        // follow-up: `description` (the business-facing menu label, e.g.
+        // "Relacionamento com cliente") used to only be copied at creation
+        // — a catalog SystemArtifact enriched with a real description
+        // AFTER a demand already selected it left the mirrored `Artifact`
+        // stuck with the stale value forever, silently. This runs on every
+        // save (already idempotent for the repository-link sync below),
+        // so it stays in sync going forward too.
+        artifact = await this.prisma.db.artifact.update({
+          where: { id: artifact.id },
+          data: { description: systemArtifact.description },
+        });
+      }
 
       const existingLinks = await this.prisma.db.artifactRepository.findMany({
         where: { artifactId: artifact.id },

@@ -1,4 +1,4 @@
-import { Controller, Param, Post, UseGuards } from "@nestjs/common";
+import { Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../identity/auth/jwt-auth.guard";
 import { RequirePermission } from "../identity/guards/permissions.decorator";
@@ -16,5 +16,12 @@ export class DependencyAnalyzerBulkController {
   @RequirePermission("DEPENDENCY_ANALYZER_WRITE")
   analyzeAll(@Param("systemId") systemId: string) {
     return this.runs.createForSystem(systemId);
+  }
+
+  /** "Atualizar status" — manual-refresh aggregate progress for the bulk trigger above. */
+  @Get("analyze-all/status")
+  @RequirePermission("DEPENDENCY_ANALYZER_READ")
+  getStatus(@Param("systemId") systemId: string) {
+    return this.runs.getSystemStatus(systemId);
   }
 }

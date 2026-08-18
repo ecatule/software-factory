@@ -269,6 +269,11 @@ model Client {
 
   name              String
   externalReference String? @map("external_reference")
+  // GMUD: o dropdown "Cliente" do board de Gestão de Mudanças no Monday já
+  // tem opções fixas cadastradas que não batem com o nome do Cliente aqui
+  // (ex.: "QV" no Monday vs. "QV Benefícios" aqui) — quando preenchido, usa
+  // este valor exato ao abrir uma solicitação; quando vazio, usa `name`.
+  mondayClientLabel String? @map("monday_client_label")
 
   projects Project[]
   demands  Demand[]
@@ -1013,4 +1018,35 @@ model DependencyAnalysisRun {
 
   @@index([systemArtifactId])
   @@map("dependency_analysis_runs")
+}
+
+// ---------------------------------------------------------------------------
+// GMUD (Gestão de Mudanças) — a "Solicitações de deploy" item opened on the
+// external Monday board (id 18399639420) for a Demand, via ChangeManagementProvider.
+// ---------------------------------------------------------------------------
+
+enum GmudEnvironment {
+  HOMOLOGACAO
+  PRODUCAO
+}
+
+model GmudRequest {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  // scalar FK only, no Prisma relation — same convention as
+  // AgentExecution.demandId/DependencyAnalysisRun.systemArtifactId.
+  demandId      String          @map("demand_id") @db.Uuid
+  environment   GmudEnvironment
+  mondayItemId  String          @map("monday_item_id")
+  mondayItemUrl String          @map("monday_item_url")
+
+  @@index([demandId])
+  @@map("gmud_requests")
 }

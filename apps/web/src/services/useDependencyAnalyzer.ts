@@ -95,6 +95,28 @@ export function useTriggerAllDependencyAnalysis() {
   });
 }
 
+export interface SystemAnalysisStatus {
+  total: number;
+  completed: number;
+  running: number;
+  failed: number;
+  pending: number;
+}
+
+/**
+ * "N Total ativos, N Concluídas, N Em andamento, N Erro, N a Processar" —
+ * manual-refresh only (no `refetchInterval`, same convention as
+ * `useExecutionsList`'s own "Atualizar" button) — the caller wires this to
+ * an explicit `refetch()` click, not automatic polling.
+ */
+export function useDependencyAnalysisSystemStatus(systemId: string) {
+  return useQuery({
+    queryKey: ["dependency-analysis-system-status", systemId],
+    queryFn: () => apiGet<SystemAnalysisStatus>(`/dependency-analyzer/systems/${systemId}/analyze-all/status`),
+    enabled: false,
+  });
+}
+
 /** polls while the artifact's latest run is non-terminal — used both to disable the trigger button and to drive the progress modal. */
 export function useLatestDependencyAnalysisRun(systemArtifactId: string | null) {
   return useQuery({
