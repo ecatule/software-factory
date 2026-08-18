@@ -329,18 +329,48 @@ export class DependencyAnalyzerService {
   /**
    * "Artefatos relacionados" — feeds the specification wizard's preview
    * (spec: help a non-technical analyst discover which OTHER catalog
-   * artifacts a selected one depends on). Resolves each
-   * `Neo4jDependencyRepository.getRelatedRepositories` hit (a
-   * `repo:<owner>/<name>` id) back to a real, active `SystemArtifact` by
-   * matching its `name` — the same convention every artifact's real repo
-   * identity is composed from (`composeOwnerRepo`). `systemArtifactId` is
-   * `null` when the target repo has never been analyzed/catalogued —
-   * reported as-is rather than guessed.
+   * artifacts a selected one depends on). Two layers, in order:
+   *
+   * 1. Exact graph match (`Neo4jDependencyRepository.getRelatedRepositories`)
+   *    — only fires once the target has ALSO been analyzed as a backend
+   *    (its `EXPOSES` edge exists for that exact URL).
+   * 2. Path-segment name fallback — live-observed: layer 1 alone returns
+   *    NOTHING for a typical Vue frontend (e.g. `vexur-operacao-contrato-adesao`
+   *    has 90+ real calls, every one LOW confidence because the URL is built
+   *    dynamically — `window.config.api["server-X"] + "/api-vexur-y/..."` —
+   *    so it never string-matches a backend's clean exposed path). But this
+   *    platform's own convention is completely consistent regardless of how
+   *    dynamic the URL construction is: the first `/api-vexur-x` or `/vexur-x`
+   *    path segment IS the target's real `SystemArtifact.name` — confirmed
+   *    across every repo analyzed this session. This layer matches that
+   *    segment directly against the catalog, so it resolves even when the
+   *    target has never been analyzed at all (unlike layer 1).
+   *
+   * Deduped by target artifact (not by call) — this reports "which artifacts
+   * does X depend on", not a second copy of the raw call list already shown
+   * above it (`DependencyMappingSummary`).
    */
   async getRelatedSystemArtifacts(systemArtifactId: string): Promise<RelatedSystemArtifact[]> {
-    const { externalReference } = await this.resolveSystemArtifactReference(systemArtifactId);
-    const related = await this.neo4j.getRelatedRepositories(externalReference);
-    return Promise.all(related.map((call) => this.resolveRelatedSystemArtifact(call)));
+    const { externalReference, name: ownName } = await this.resolveSystemArtifactReference(systemArtifactId);
+
+    const exact = await this.neo4j.getRelatedRepositories(externalReference);
+    const exactResolved = await Promise.all(exact.map((call) => this.resolveRelatedSystemArtifact(call)));
+
+    const mapping = await this.getDependencies(systemArtifactId);
+    const alreadyResolvedIds = new Set(
+      exactResolved.map((r) => r.systemArtifactId).filter((id): id is string => id !== null),
+    );
+    const candidateCalls = [...mapping.screens, ...mapping.outboundCalls];
+
+    const byArtifact = new Map<string, RelatedSystemArtifact>();
+    for (const call of candidateCalls) {
+      const resolved = await this.resolveByPathSegment(call.method, call.url, ownName);
+      if (!resolved?.systemArtifactId) continue;
+      if (alreadyResolvedIds.has(resolved.systemArtifactId)) continue;
+      if (!byArtifact.has(resolved.systemArtifactId)) byArtifact.set(resolved.systemArtifactId, resolved);
+    }
+
+    return [...exactResolved, ...byArtifact.values()];
   }
 
   private async resolveRelatedSystemArtifact(
@@ -358,6 +388,33 @@ export class DependencyAnalyzerService {
       systemArtifactName: match?.name ?? null,
       systemArtifactType: match?.type ?? null,
       systemId: match?.systemId ?? null,
+    };
+  }
+
+  private static readonly ARTIFACT_PATH_SEGMENT = /\/((?:api-)?vexur-[a-z0-9]+(?:-[a-z0-9]+)*)/i;
+
+  private async resolveByPathSegment(
+    method: string,
+    url: string,
+    ownName: string,
+  ): Promise<RelatedSystemArtifact | null> {
+    const match = url.match(DependencyAnalyzerService.ARTIFACT_PATH_SEGMENT);
+    if (!match) return null;
+    const candidateName = match[1];
+    if (candidateName === ownName) return null;
+
+    const artifact = await this.prisma.db.systemArtifact.findFirst({
+      where: { name: candidateName, stAtivo: true },
+    });
+    if (!artifact) return null;
+    return {
+      method,
+      url,
+      repositoryId: candidateName,
+      systemArtifactId: artifact.id,
+      systemArtifactName: artifact.name,
+      systemArtifactType: artifact.type,
+      systemId: artifact.systemId,
     };
   }
 
