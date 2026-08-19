@@ -1,18 +1,22 @@
 import { useState } from "react";
-import { DataTable, Modal, Pagination, Badge } from "@software-factory/ui";
+import { DataTable, Modal, Pagination, Badge, MarkdownEditor } from "@software-factory/ui";
 import type { ColumnDef } from "@tanstack/react-table";
-import { RefreshCw, RotateCcw } from "lucide-react";
+import { FileText, RefreshCw, RotateCcw, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/select";
 import { useAuth } from "../context/AuthContext";
 import {
   executionStatusLabel,
   pipelineStageLabel,
+  readDeveloperOutput,
+  useCancelExecution,
   useExecution,
   useExecutionsList,
   useRetryExecution,
   type Execution,
 } from "../services/useExecutions";
+
+const CANCELLABLE_STATUSES = new Set<Execution["status"]>(["QUEUED", "RUNNING"]);
 
 const STATUS_TONE: Record<Execution["status"], "neutral" | "success" | "warning" | "danger"> = {
   QUEUED: "neutral",
@@ -34,7 +38,9 @@ export function Executions() {
   const [status, setStatus] = useState("");
   const { data, isLoading, refetch } = useExecutionsList(page, status || undefined);
   const [openExecutionId, setOpenExecutionId] = useState<string | null>(null);
+  const [viewingDocument, setViewingDocument] = useState<{ title: string; content: string } | null>(null);
   const retryExecution = useRetryExecution();
+  const cancelExecution = useCancelExecution();
   // follow-up: `pipelineStage` is updated live server-side as the
   // "developer" agent's multi-step pipeline (branches/cloning/safety-check/
   // tasks/analyze/checklist/implement) progresses — but this screen no
@@ -52,7 +58,14 @@ export function Executions() {
     { header: "Demanda", cell: ({ row }) => row.original.demandTitle ?? row.original.demandId },
     {
       header: "Status",
-      cell: ({ row }) => <Badge label={executionStatusLabel(row.original.status)} tone={STATUS_TONE[row.original.status]} />,
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2">
+          <Badge label={executionStatusLabel(row.original.status)} tone={STATUS_TONE[row.original.status]} />
+          {readDeveloperOutput(row.original.output).hasUnassistedNote && (
+            <Badge label="Decisão não assistida" tone="warning" />
+          )}
+        </div>
+      ),
     },
     {
       header: "Etapa atual",
@@ -102,6 +115,9 @@ export function Executions() {
           <div className="flex flex-col gap-3">
             <p className="flex items-center gap-2">
               <Badge label={executionStatusLabel(openExecution.data.status)} tone={STATUS_TONE[openExecution.data.status]} />
+              {readDeveloperOutput(openExecution.data.output).hasUnassistedNote && (
+                <Badge label="Decisão não assistida" tone="warning" />
+              )}
               {openExecution.data.status === "RUNNING" && pipelineStageLabel(openExecution.data.pipelineStage) && (
                 <span className="text-sm text-muted-foreground">
                   — {pipelineStageLabel(openExecution.data.pipelineStage)}
@@ -122,6 +138,22 @@ export function Executions() {
                 {openExecution.data.error}
               </p>
             )}
+            {CANCELLABLE_STATUSES.has(openExecution.data.status) && hasPermission("AGENT_EXECUTE") && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="self-start"
+                disabled={cancelExecution.isPending}
+                onClick={() => {
+                  if (window.confirm("Cancelar esta execução? Essa ação não pode ser desfeita.")) {
+                    cancelExecution.mutate(openExecution.data!.id);
+                  }
+                }}
+              >
+                <XCircle /> Cancelar
+              </Button>
+            )}
             {openExecution.data.status === "FAILED" && hasPermission("AGENT_EXECUTE") && (
               <Button
                 type="button"
@@ -134,6 +166,55 @@ export function Executions() {
                 <RotateCcw /> Reexecutar
               </Button>
             )}
+            {(() => {
+              const developerOutput = readDeveloperOutput(openExecution.data.output);
+              if (!developerOutput.hasUnassistedNote) return null;
+              return (
+                <div className="flex flex-col gap-2 rounded-md bg-warning/10 px-3 py-2 text-sm text-warning">
+                  <p className="font-medium">
+                    O Developer Agent precisou tomar uma decisão sozinho (sem analista disponível) durante o
+                    /speckit-implement. Revise antes de aprovar o PR.
+                  </p>
+                  {developerOutput.unassistedNoteExcerpt && (
+                    <pre className="overflow-x-auto whitespace-pre-wrap font-sans text-xs text-foreground">
+                      {developerOutput.unassistedNoteExcerpt}
+                    </pre>
+                  )}
+                </div>
+              );
+            })()}
+            {(() => {
+              const developerOutput = readDeveloperOutput(openExecution.data.output);
+              if (!developerOutput.specContent && !developerOutput.tasksContent) return null;
+              return (
+                <div className="flex items-center gap-2">
+                  {developerOutput.specContent && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setViewingDocument({ title: "spec.md", content: developerOutput.specContent! })
+                      }
+                    >
+                      <FileText /> Ver spec.md
+                    </Button>
+                  )}
+                  {developerOutput.tasksContent && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setViewingDocument({ title: "tasks.md", content: developerOutput.tasksContent! })
+                      }
+                    >
+                      <FileText /> Ver tasks.md
+                    </Button>
+                  )}
+                </div>
+              );
+            })()}
             <h3 className="text-sm font-semibold text-foreground">Entrada</h3>
             <pre className="overflow-x-auto rounded-md bg-secondary p-3 text-xs text-foreground">
               {JSON.stringify(openExecution.data.input, null, 2)}
@@ -143,6 +224,17 @@ export function Executions() {
               {JSON.stringify(openExecution.data.output, null, 2)}
             </pre>
           </div>
+        )}
+      </Modal>
+
+      <Modal
+        title={viewingDocument?.title ?? ""}
+        isOpen={viewingDocument !== null}
+        onClose={() => setViewingDocument(null)}
+        className="modal-wide"
+      >
+        {viewingDocument && (
+          <MarkdownEditor value={viewingDocument.content} onChange={() => {}} readOnly />
         )}
       </Modal>
     </div>

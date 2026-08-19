@@ -167,7 +167,23 @@ export class SpecKitProvider implements SDDProvider {
       input,
     );
     const filesChanged = await this.collectChangedFiles(input.workspacePath);
-    return { filesChanged, summary };
+
+    // follow-up: best-effort — `implement` itself never fails just because
+    // these can't be resolved (e.g. no feature dir, or a stage before this
+    // one never ran for this workspace).
+    const featureDir = await this.resolveFeatureDir(input.workspacePath).catch(() => null);
+    const specContent = featureDir ? await this.readOptionalFile(path.join(featureDir, "spec.md")) : undefined;
+    const tasksContent = featureDir ? await this.readOptionalFile(path.join(featureDir, "tasks.md")) : undefined;
+
+    return { filesChanged, summary, specContent, tasksContent };
+  }
+
+  private async readOptionalFile(filePath: string): Promise<string | undefined> {
+    try {
+      return await readFile(filePath, "utf-8");
+    } catch {
+      return undefined;
+    }
   }
 
   /** Shared by every stage (including `implement`): scaffold once, then sync the demand's current Postgres SPEC/PLAN onto disk. */

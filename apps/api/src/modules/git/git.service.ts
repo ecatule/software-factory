@@ -1,4 +1,5 @@
 import { HttpException, HttpStatus, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import type { PullRequest } from "@prisma/client";
 import {
   CODE_REPOSITORY_PROVIDER,
   type CodeRepositoryProvider,
@@ -141,12 +142,29 @@ export class GitService {
    * silently missed every other repo with real changes (live-observed: the
    * PR landed on an untouched artifact while the two repos with the actual
    * commits got no PR at all). Now creates one PR per eligible artifact,
-   * skipping ones that already have a PR for this demand and capturing
+   * skipping ones that still have an OPEN PR for this demand and capturing
    * per-artifact failures (e.g. GitHub's "no commits between" error when an
    * artifact's branch has nothing to compare) instead of aborting the rest —
    * same convention as `commitAllArtifacts`.
+   *
+   * follow-up: a demand can span several increments, and `Branch` is one row
+   * per `(artifactId, demandId)` — reused across every increment, never
+   * recreated (see `ensureBranchesForDemand`). Live-observed: once an
+   * artifact's first PR existed at all (even already MERGED from a prior
+   * increment), this permanently refused to open a new one for that
+   * artifact, even after a later increment pushed genuinely new commits onto
+   * that same reused branch. Only an OPEN PR should block a new one — and
+   * since our own `status` never updates on its own (no webhook wiring, see
+   * `syncPullRequest`), an OPEN row is re-verified live against GitHub right
+   * here before trusting it to block, self-healing the same staleness
+   * `syncPullRequest` exists to fix manually.
+   *
+   * `artifactIds` — optional: lets the caller pick which of the demand's
+   * eligible artifacts to open a PR for (e.g. "só quero a PR de um artefato
+   * específico deste incremento") instead of always sweeping every eligible
+   * one. Omitted/empty keeps the original "all eligible" behavior.
    */
-  async createPullRequest(demandId: string) {
+  async createPullRequest(demandId: string, artifactIds?: string[]) {
     const demand = await this.prisma.db.demand.findUniqueOrThrow({ where: { id: demandId } });
     const artifacts = await this.prisma.db.artifact.findMany({
       where: { demandId },
@@ -159,14 +177,30 @@ export class GitService {
 
     const branches = await this.prisma.db.branch.findMany({ where: { demandId } });
     const branchByArtifactId = new Map(branches.map((b) => [b.artifactId, b]));
-    const existingPRs = await this.prisma.db.pullRequest.findMany({ where: { demandId } });
-    const artifactIdsWithPR = new Set(existingPRs.map((p) => p.artifactId).filter((id): id is string => !!id));
+    const existingPRs = await this.prisma.db.pullRequest.findMany({
+      where: { demandId },
+      orderBy: { createdAt: "desc" },
+    });
+    const latestPRByArtifactId = new Map<string, PullRequest>();
+    for (const pr of existingPRs) {
+      if (!pr.artifactId || latestPRByArtifactId.has(pr.artifactId)) continue;
+      latestPRByArtifactId.set(pr.artifactId, pr); // first seen per artifact = most recent (desc order)
+    }
 
+    const requestedArtifactIds = artifactIds?.length ? new Set(artifactIds) : null;
     const eligibleArtifacts = artifacts.filter(
-      (a) => a.repositories.length > 0 && branchByArtifactId.has(a.id),
+      (a) =>
+        a.repositories.length > 0 &&
+        branchByArtifactId.has(a.id) &&
+        (!requestedArtifactIds || requestedArtifactIds.has(a.id)),
     );
     if (eligibleArtifacts.length === 0) {
-      throw new HttpException("No repository linked to this demand's artifacts", HttpStatus.UNPROCESSABLE_ENTITY);
+      throw new HttpException(
+        requestedArtifactIds
+          ? "None of the selected artifacts are eligible for a Pull Request (no repository/branch linked)"
+          : "No repository linked to this demand's artifacts",
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
     }
 
     const title = `[${demand.externalId}] ${demand.title}`;
@@ -178,7 +212,8 @@ export class GitService {
       | { artifactId: string; skipped: true }
     > = [];
     for (const artifact of eligibleArtifacts) {
-      if (artifactIdsWithPR.has(artifact.id)) {
+      const latestPR = latestPRByArtifactId.get(artifact.id);
+      if (latestPR && (await this.isPullRequestStillOpen(latestPR))) {
         results.push({ artifactId: artifact.id, skipped: true });
         continue;
       }
@@ -220,6 +255,40 @@ export class GitService {
       }
     }
     return results;
+  }
+
+  /**
+   * A DB row of `status: "OPEN"` may already be stale (merged/closed on
+   * GitHub since we last touched it — no webhook wiring, see
+   * `syncPullRequest`), so this re-checks live before trusting it to block a
+   * new PR, and persists whatever it finds so the row doesn't stay stale for
+   * next time either. Best-effort: if the artifact was removed or the live
+   * check fails for any reason, conservatively treat it as still open rather
+   * than risk opening a duplicate PR.
+   */
+  private async isPullRequestStillOpen(pullRequest: PullRequest): Promise<boolean> {
+    if (pullRequest.status !== "OPEN") return false;
+    try {
+      const [repository, artifact] = await Promise.all([
+        this.prisma.db.repository.findUniqueOrThrow({ where: { id: pullRequest.repositoryId } }),
+        pullRequest.artifactId
+          ? this.prisma.db.artifact.findUnique({ where: { id: pullRequest.artifactId } })
+          : Promise.resolve(null),
+      ]);
+      if (!artifact) return true;
+
+      const externalReference = composeOwnerRepo(repository.externalReference, artifact.name);
+      const fresh = await this.codeRepositoryProvider.getPullRequest(externalReference, pullRequest.externalReference);
+      if (fresh.status !== pullRequest.status || fresh.url !== pullRequest.url) {
+        await this.prisma.db.pullRequest.update({
+          where: { id: pullRequest.id },
+          data: { status: fresh.status, url: fresh.url },
+        });
+      }
+      return fresh.status === "OPEN";
+    } catch {
+      return true;
+    }
   }
 
   /** spec User Story 6/8: single shared branch-creation path (see developer-agent.service.ts). */

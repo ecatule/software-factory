@@ -39,6 +39,15 @@ export function useArtifactsList(page: number) {
   });
 }
 
+/** matches the `["demand", demandId, "artifacts"]` queryKey used elsewhere (useDemandPolling, useCreateArtifact's invalidation) so this stays in sync with them. */
+export function useDemandArtifacts(demandId: string | null) {
+  return useQuery({
+    queryKey: ["demand", demandId, "artifacts"],
+    queryFn: () => apiGet<Artifact[]>(`/demands/${demandId}/artifacts`),
+    enabled: !!demandId,
+  });
+}
+
 export function useArtifactFiles(artifactId: string | null) {
   return useQuery({
     queryKey: ["artifact", artifactId, "files"],

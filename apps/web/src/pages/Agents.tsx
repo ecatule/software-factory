@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/select";
 import { useAuth } from "../context/AuthContext";
 import { useAgentsList, useTriggerExecution, type Agent, type TriggerExecutionInput } from "../services/useAgents";
+import { useDemandArtifacts } from "../services/useArtifacts";
 import { useDemandsList } from "../services/useDemands";
 import { useCommitAllArtifacts, useCreatePullRequest } from "../services/useGitActivity";
 
@@ -21,8 +22,21 @@ export function Agents() {
   const { register, handleSubmit, reset } = useForm<TriggerExecutionInput>();
 
   const [gitDemandId, setGitDemandId] = useState("");
+  const [selectedArtifactIds, setSelectedArtifactIds] = useState<string[]>([]);
+  const { data: gitDemandArtifacts } = useDemandArtifacts(gitDemandId || null);
   const commitAll = useCommitAllArtifacts();
   const createPullRequest = useCreatePullRequest();
+
+  function toggleArtifact(artifactId: string) {
+    setSelectedArtifactIds((current) =>
+      current.includes(artifactId) ? current.filter((id) => id !== artifactId) : [...current, artifactId],
+    );
+  }
+
+  function selectGitDemand(demandId: string) {
+    setGitDemandId(demandId);
+    setSelectedArtifactIds([]);
+  }
 
   const columns: ColumnDef<Agent, unknown>[] = [
     { header: "Nome", accessorKey: "name" },
@@ -97,7 +111,7 @@ export function Agents() {
             <NativeSelect
               id="gitDemandId"
               value={gitDemandId}
-              onChange={(e) => setGitDemandId(e.target.value)}
+              onChange={(e) => selectGitDemand(e.target.value)}
             >
               <option value="">Selecione uma demanda…</option>
               {demands?.items.map((d) => (
@@ -107,6 +121,30 @@ export function Agents() {
               ))}
             </NativeSelect>
           </div>
+
+          {hasPermission("PR_CREATE") && gitDemandId && !!gitDemandArtifacts?.length && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-foreground">
+                Artefatos para o Pull Request (deixe tudo desmarcado para processar todos os elegíveis)
+              </span>
+              <ul className="flex flex-col gap-1">
+                {gitDemandArtifacts.map((artifact) => (
+                  <li key={artifact.id} className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id={`pr-artifact-${artifact.id}`}
+                      checked={selectedArtifactIds.includes(artifact.id)}
+                      onChange={() => toggleArtifact(artifact.id)}
+                    />
+                    <label htmlFor={`pr-artifact-${artifact.id}`} className="text-sm text-foreground">
+                      {artifact.name}
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div className="flex items-center gap-2">
             {hasPermission("GIT_WRITE") && (
               <Button
@@ -123,7 +161,9 @@ export function Agents() {
                 type="button"
                 variant="outline"
                 disabled={!gitDemandId || createPullRequest.isPending}
-                onClick={() => createPullRequest.mutate(gitDemandId)}
+                onClick={() =>
+                  createPullRequest.mutate({ demandId: gitDemandId, artifactIds: selectedArtifactIds })
+                }
               >
                 Criar Pull Request
               </Button>
@@ -153,7 +193,7 @@ export function Agents() {
                   {result.pullRequestId
                     ? `PR criado (#${result.externalReference})`
                     : result.skipped
-                      ? "já tinha PR para este artefato"
+                      ? "já tem uma PR aberta para este artefato"
                       : `erro — ${result.error}`}
                 </li>
               ))}

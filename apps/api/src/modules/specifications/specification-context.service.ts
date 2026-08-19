@@ -28,24 +28,26 @@ export class SpecificationContextService {
 
   /**
    * feature 004 (spec FR-003, research.md §11): resolves "branch de origem"
-   * from the repository backing the demand's known artifacts (edge case:
-   * multiple repositories may have diverging branches — the first
-   * artifact-linked repository wins, a reasonable default absent a more
-   * specific "primary repository" concept). follow-up: Project no longer
-   * has its own branch fields (moved to Repository, the single source of
-   * truth) — with no repository resolvable yet, this returns nulls and the
-   * frontend prompts the analyst to fill it in manually.
+   * directly from the demand's Project — same lookup `build()`'s own
+   * `repositories` field already uses below, just narrowed to one row.
+   * follow-up: previously went through `Artifact`→`ArtifactRepository`,
+   * which only exists after an analyst has already selected and saved
+   * "Sistemas e Artefatos" — always empty for a brand-new demand, even
+   * when the Project's repository was registered long ago. Live-observed:
+   * every Project today has exactly one active Repository (one git base
+   * shared by every artifact under it, not one per artifact), so
+   * resolving by `projectId` is not a lossy simplification here — "first
+   * active repository wins" only matters as a tiebreaker if that ever
+   * changes. With no repository resolvable yet, this returns nulls and
+   * the frontend prompts the analyst to fill it in manually.
    */
   async resolveOriginBranch(demandId: string) {
     const demand = await this.prisma.db.demand.findUnique({ where: { id: demandId } });
     if (!demand) throw new NotFoundException(`Demand ${demandId} not found`);
 
-    const artifactLink = await this.prisma.db.artifactRepository.findFirst({
-      where: { artifact: { demandId } },
+    const repository = await this.prisma.db.repository.findFirst({
+      where: { projectId: demand.projectId, stAtivo: true },
     });
-    const repository = artifactLink
-      ? await this.prisma.db.repository.findUnique({ where: { id: artifactLink.repositoryId } })
-      : null;
 
     return {
       productionBranch: repository?.productionBranch ?? null,

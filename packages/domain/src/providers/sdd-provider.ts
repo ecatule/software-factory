@@ -14,6 +14,16 @@ export interface ArtifactResult {
 export interface ImplementationResult {
   filesChanged: string[];
   summary: string;
+  /**
+   * follow-up: `/speckit-implement` is the only stage that can rewrite
+   * `spec.md`/`tasks.md` AFTER they were already generated (e.g. to record
+   * an assumption it had to make unattended, no analyst available) — relread
+   * best-effort right after the run so callers can detect/persist that
+   * without duplicating "find the feature dir" logic outside the provider.
+   * Undefined when the file doesn't exist (never thrown for this).
+   */
+  specContent?: string;
+  tasksContent?: string;
 }
 
 /**

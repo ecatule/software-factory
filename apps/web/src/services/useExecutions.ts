@@ -50,6 +50,23 @@ export function executionStatusLabel(status: string): string {
   return EXECUTION_STATUS_LABELS[status] ?? status;
 }
 
+/**
+ * follow-up: `Execution.output` stays `unknown` (it's whatever JSON shape
+ * the agent type happened to write — see `ExecutionsProcessor`), so this
+ * narrows it just enough to read the "developer" agent's post-implement
+ * fields, without pretending the whole `output` has a fixed schema.
+ */
+export interface DeveloperExecutionOutput {
+  hasUnassistedNote?: boolean;
+  unassistedNoteExcerpt?: string | null;
+  specContent?: string;
+  tasksContent?: string;
+}
+
+export function readDeveloperOutput(output: unknown): DeveloperExecutionOutput {
+  return (output && typeof output === "object" ? output : {}) as DeveloperExecutionOutput;
+}
+
 /** feature 003 (research.md §10): polls a single execution, same POLL_INTERVAL_MS convention as useDemandPolling. */
 const POLL_INTERVAL_MS = 2000;
 const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "CANCELLED"]);
@@ -99,6 +116,22 @@ export function useRetryExecution() {
   return useMutation({
     mutationFn: (executionId: string) => apiPost<Execution>(`/executions/${executionId}/retry`),
     meta: { successMessage: "Execução reiniciada." },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["executions"] }),
+  });
+}
+
+/**
+ * `POST /executions/:id/cancel` — flips the row to CANCELLED regardless of
+ * whether a live subprocess is still found for it (`ExecutionsService.cancel`
+ * best-effort kills the tracked process first, but always marks CANCELLED),
+ * so this is also the way to unstick a job whose process already died
+ * without the row ever reaching a terminal status.
+ */
+export function useCancelExecution() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (executionId: string) => apiPost<Execution>(`/executions/${executionId}/cancel`),
+    meta: { successMessage: "Execução cancelada." },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["executions"] }),
   });
 }

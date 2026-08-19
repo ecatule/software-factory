@@ -100,12 +100,18 @@ export interface CreatePullRequestResult {
   skipped?: true;
 }
 
-/** manual "create pull request" trigger — Agentes screen. One PR per eligible artifact/repo, not just the demand's first one. */
+/**
+ * manual "create pull request" trigger — Agentes screen. One PR per
+ * eligible artifact/repo, not just the demand's first one. `artifactIds`
+ * lets the caller narrow it down to specific artifacts (e.g. only the ones
+ * touched by the current increment) — omitted/empty keeps the original
+ * "every eligible artifact" behavior.
+ */
 export function useCreatePullRequest() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (demandId: string) =>
-      apiPost<CreatePullRequestResult[]>(`/demands/${demandId}/pull-request`),
+    mutationFn: ({ demandId, artifactIds }: { demandId: string; artifactIds?: string[] }) =>
+      apiPost<CreatePullRequestResult[]>(`/demands/${demandId}/pull-request`, { artifactIds }),
     meta: { successMessage: "Pull Requests processados." },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["pull-requests"] }),
   });

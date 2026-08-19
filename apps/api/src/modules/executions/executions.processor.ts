@@ -18,6 +18,7 @@ import { ProviderConfigurationResolver } from "../providers/provider-configurati
 import { GitService } from "../git/git.service";
 import { DeveloperAgentService } from "./developer-agent.service";
 import type { ExecutionJobData } from "./executions.service";
+import { extractUnassistedNote } from "./implementation-note";
 
 const STAGE_TO_DOCUMENT_TYPE: Record<string, SpecDocumentType> = {
   specify: "SPEC",
@@ -223,6 +224,15 @@ export class ExecutionsProcessor extends WorkerHost {
           );
         }
 
+        // follow-up: `/speckit-implement` is the only stage that can rewrite
+        // spec.md/tasks.md AFTER they were already generated (e.g. to record
+        // an assumption it had to make with no analyst available) — never
+        // persisted anywhere before this, only ever on the workspace's own
+        // disk. Isolated in its own try/catch (see the method itself) so a
+        // bug here can never turn a genuinely successful `implement` into a
+        // FAILED execution.
+        const postImplementNote = await this.persistPostImplementSnapshots(execution, result);
+
         // follow-up: commits+pushes only the files that became dirty DURING
         // this run (per-repo diff against the `dirtyBefore` snapshot) — a
         // real, live-observed case had unrelated pre-existing uncommitted
@@ -268,7 +278,7 @@ export class ExecutionsProcessor extends WorkerHost {
         await this.setTerminalStatus(execution.id, {
           status: "COMPLETED",
           finishedAt: new Date(),
-          output: { ...result, commits: commitResults },
+          output: { ...result, commits: commitResults, ...postImplementNote },
         });
         await this.workflows.advanceToStage(execution.demandId, "TESTING");
         return;
@@ -447,6 +457,109 @@ export class ExecutionsProcessor extends WorkerHost {
     }
   }
 
+
+  /**
+   * follow-up: wraps its own failures — called from the "developer" branch
+   * right after `implement` succeeds, and a bug here must never turn that
+   * success into a FAILED execution (same reasoning already applied to
+   * per-artifact commit failures just below this call site).
+   */
+  private async persistPostImplementSnapshots(
+    execution: { id: string; demandId: string; agentId: string; providerConfigurationId: string | null },
+    result: { specContent?: string; tasksContent?: string },
+  ): Promise<{
+    hasUnassistedNote?: boolean;
+    unassistedNoteExcerpt?: string | null;
+    specVersionId?: string;
+    tasksVersionId?: string;
+  }> {
+    try {
+      const output: {
+        hasUnassistedNote?: boolean;
+        unassistedNoteExcerpt?: string | null;
+        specVersionId?: string;
+        tasksVersionId?: string;
+      } = {};
+
+      const noteExcerpt = extractUnassistedNote(result.specContent);
+      if (noteExcerpt) {
+        output.hasUnassistedNote = true;
+        output.unassistedNoteExcerpt = noteExcerpt;
+      }
+
+      if (result.specContent?.trim()) {
+        const versionId = await this.persistDocumentSnapshotIfChanged(
+          execution,
+          "SPEC",
+          result.specContent,
+          noteExcerpt ? { hasUnassistedNote: true, noteExcerpt } : undefined,
+        );
+        if (versionId) output.specVersionId = versionId;
+      }
+
+      if (result.tasksContent?.trim()) {
+        const versionId = await this.persistDocumentSnapshotIfChanged(execution, "TASKS", result.tasksContent);
+        if (versionId) output.tasksVersionId = versionId;
+      }
+
+      return output;
+    } catch (error) {
+      this.logger.error(
+        `Failed to persist post-implement spec/tasks snapshot for execution ${execution.id}`,
+        error as Error,
+      );
+      return {};
+    }
+  }
+
+  /**
+   * follow-up: unlike `writeSpecificationVersion` (always writes — it's the
+   * stage's own primary output), this is a side effect of `implement`
+   * possibly touching a document that already has a version from an earlier
+   * stage — skips the write entirely when the content didn't actually
+   * change, so a run that left spec.md/tasks.md untouched doesn't clutter
+   * the version history.
+   */
+  private async persistDocumentSnapshotIfChanged(
+    execution: { id: string; demandId: string; agentId: string; providerConfigurationId: string | null },
+    documentType: SpecDocumentType,
+    content: string,
+    changeSummary?: object,
+  ): Promise<string | undefined> {
+    const specification = await this.prisma.db.specification.upsert({
+      where: { demandId_documentType: { demandId: execution.demandId, documentType } },
+      update: {},
+      create: { demandId: execution.demandId, documentType },
+    });
+
+    const lastVersion = await this.prisma.db.specificationVersion.findFirst({
+      where: { specificationId: specification.id },
+      orderBy: { versionNumber: "desc" },
+    });
+    if (lastVersion?.content === content) return undefined;
+
+    const nextVersionNumber = (lastVersion?.versionNumber ?? 0) + 1;
+    const newVersion = await this.prisma.db.specificationVersion.create({
+      data: {
+        specificationId: specification.id,
+        versionNumber: nextVersionNumber,
+        content,
+        agentId: execution.agentId,
+        llmProviderConfigurationId: execution.providerConfigurationId,
+        executionId: execution.id,
+        reason: "Atualizado pelo Developer Agent durante /speckit-implement (execução não assistida)",
+        source: "AI",
+        changeSummary: changeSummary as object | undefined,
+      },
+    });
+
+    await this.prisma.db.specification.update({
+      where: { id: specification.id },
+      data: { currentVersionId: newVersion.id },
+    });
+
+    return newVersion.id;
+  }
 
   private async writeSpecificationVersion(
     execution: { id: string; demandId: string; agentId: string; providerConfigurationId: string | null },

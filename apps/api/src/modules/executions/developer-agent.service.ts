@@ -294,42 +294,44 @@ export class DeveloperAgentService {
   }
 
   /**
-   * One entry per (Artifact, Repository) link — NOT deduplicated by
-   * repositoryId, since several Artifacts (different real repos) can now
-   * share the same Repository row (the shared org/host base). `Repository`
-   * has no `@relation` back to `ArtifactRepository` (matches this schema's
-   * existing convention of plain scalar FKs for simple lookups), so
-   * repositories are fetched separately and joined in memory.
+   * follow-up: used to resolve `Repository` per (Artifact, ArtifactRepository)
+   * link — but `ArtifactRepository` is copied once from the CATALOG
+   * `SystemArtifact` (`DemandsService.ensureArtifactsForSystemArtifacts`),
+   * and that catalog is shared across every Project/client (the same
+   * `SystemArtifact` "api-vexur-x" is reused everywhere). Live-observed: a
+   * demand under Project "Vexur - Corpe Saúde" cloned and branched from the
+   * generic "Vexur" Project's Repository instead — wrong `productionBranch`,
+   * and its safety-check correctly caught a DIFFERENT client's production
+   * secret leaking through as a result. `Demand.projectId`/`Repository.projectId`
+   * are both required scalar FKs (1:1), and today every Project has exactly
+   * one active Repository — so resolving by the demand's own Project is a
+   * safe, non-lossy fix, not a simplification that loses information.
+   * `ArtifactRepository` links are still read here (unchanged elsewhere) —
+   * only as an eligibility signal ("this artifact has a repository
+   * configured at all"), the same one `GitService` already uses
+   * independently to gate commits; WHICH repository they point at no
+   * longer matters for this method's own resolution.
    */
   private async resolveArtifactRepositoryLinks(demandId: string): Promise<ArtifactRepositoryLink[]> {
+    const demand = await this.prisma.db.demand.findUniqueOrThrow({ where: { id: demandId } });
+    const repository = await this.prisma.db.repository.findFirst({
+      where: { projectId: demand.projectId, stAtivo: true },
+    });
+    if (!repository) return [];
+
     const artifacts = await this.prisma.db.artifact.findMany({
       where: { demandId },
       include: { repositories: true },
     });
-    const repositoryIds = [
-      ...new Set(artifacts.flatMap((a) => a.repositories.map((r) => r.repositoryId))),
-    ];
-    if (repositoryIds.length === 0) return [];
 
-    const repositories = await this.prisma.db.repository.findMany({
-      where: { id: { in: repositoryIds } },
-    });
-    const repositoryById = new Map(repositories.map((r) => [r.id, r]));
-
-    const links: ArtifactRepositoryLink[] = [];
-    for (const artifact of artifacts) {
-      for (const link of artifact.repositories) {
-        const repository = repositoryById.get(link.repositoryId);
-        if (!repository) continue;
-        links.push({
-          artifactId: artifact.id,
-          repositoryId: link.repositoryId,
-          externalReference: composeOwnerRepo(repository.externalReference, artifact.name),
-          productionBranch: repository.productionBranch,
-        });
-      }
-    }
-    return links;
+    return artifacts
+      .filter((artifact) => artifact.repositories.length > 0)
+      .map((artifact) => ({
+        artifactId: artifact.id,
+        repositoryId: repository.id,
+        externalReference: composeOwnerRepo(repository.externalReference, artifact.name),
+        productionBranch: repository.productionBranch,
+      }));
   }
 
   private async pathExists(candidate: string): Promise<boolean> {
