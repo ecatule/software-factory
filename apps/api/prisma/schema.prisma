@@ -254,6 +254,44 @@ model AuditLog {
 }
 
 // ---------------------------------------------------------------------------
+// ErrorLog: written by the global ErrorLogFilter (the only APP_FILTER in
+// this codebase) for every request that reaches Nest's exception handling —
+// AuditInterceptor only ever writes on the SUCCESS path (`tap`, no `error`
+// branch), so a failed request left zero trace anywhere but the ephemeral
+// pino stdout log until this model existed. Deliberately holds no
+// request body/headers (unlike AuditLog's `before`/`after`) — an
+// unvalidated, failed request is the least trustworthy place to persist
+// raw payloads without redaction (could be a bad login attempt's password,
+// a leaked token, etc.).
+// ---------------------------------------------------------------------------
+
+model ErrorLog {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  occurredAt      DateTime @default(now()) @map("occurred_at")
+  method          String
+  url             String
+  statusCode      Int      @map("status_code")
+  message         String   @db.Text
+  stack           String?  @db.Text
+  exceptionName   String?  @map("exception_name")
+  correlationId   String   @map("correlation_id")
+  actorUserId     String?  @map("actor_user_id") @db.Uuid
+  isHttpException Boolean  @default(false) @map("is_http_exception")
+
+  @@index([occurredAt])
+  @@index([correlationId])
+  @@map("error_logs")
+}
+
+// ---------------------------------------------------------------------------
 // Client / Project: prerequisites for every Demand.
 // ---------------------------------------------------------------------------
 

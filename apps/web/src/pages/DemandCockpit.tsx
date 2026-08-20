@@ -92,7 +92,9 @@ export function DemandCockpit() {
       {activeTab === "tasks" && <TasksTab />}
       {activeTab === "development" && <DevelopmentTab workspace={workspace.data} />}
       {activeTab === "tests" && <TestsTab demandId={demandId} />}
-      {activeTab === "git" && <GitTab activity={gitActivity.data} artifacts={artifacts.data} />}
+      {activeTab === "git" && (
+        <GitTab demandId={demandId} activity={gitActivity.data} artifacts={artifacts.data} />
+      )}
       {activeTab === "timeline" && <TimelineTab entries={timeline.data} />}
       {activeTab === "audit" && <AuditTab demandId={demandId} />}
     </div>

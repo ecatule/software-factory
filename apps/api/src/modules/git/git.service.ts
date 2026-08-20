@@ -132,6 +132,86 @@ export class GitService {
   }
 
   /**
+   * follow-up: the only way to detect a commit the Developer Agent made
+   * directly via shell (bypassing `commit()` above, see
+   * `DeveloperAgentService.detectUnpushedCommits`) — Postgres has no record
+   * of it at all, so this asks each artifact's local clone directly whether
+   * it's ahead of `origin/<branch>`.
+   */
+  async getUnpushedCommits(demandId: string) {
+    const workspacePath = await this.developerAgent.resolveWorkspacePath(demandId);
+    const paths = await this.developerAgent.resolveArtifactRepositoryPaths(demandId, workspacePath);
+    const branches = await this.prisma.db.branch.findMany({ where: { demandId } });
+    const branchByArtifactId = new Map(branches.map((b) => [b.artifactId, b.name]));
+    const entries = paths
+      .map((p) => ({ ...p, branchName: branchByArtifactId.get(p.artifactId) }))
+      .filter((p): p is typeof p & { branchName: string } => !!p.branchName);
+    return this.developerAgent.detectUnpushedCommits(entries);
+  }
+
+  /**
+   * Pushes whatever `getUnpushedCommits` finds (optionally narrowed to
+   * `artifactIds`) and records a `Commit` row per pushed sha — the same
+   * Test Gate as `commit()` applies here too, so a commit made outside the
+   * platform's own tracked flow can't skip it just by having been created
+   * via shell. Per-artifact failures are isolated (same convention as
+   * `commitAllArtifacts`/`createPullRequest`), never abort the rest.
+   */
+  async pushPendingCommits(demandId: string, artifactIds?: string[]) {
+    const project = await this.assertTestGatePassed(demandId);
+    const unpushed = await this.getUnpushedCommits(demandId);
+    const targets = artifactIds?.length ? unpushed.filter((u) => artifactIds.includes(u.artifactId)) : unpushed;
+
+    const results: Array<
+      { artifactId: string; pushed: string[] } | { artifactId: string; error: string }
+    > = [];
+    for (const target of targets) {
+      try {
+        const artifact = await this.prisma.db.artifact.findUniqueOrThrow({ where: { id: target.artifactId } });
+        const branch = await this.prisma.db.branch.findUniqueOrThrow({
+          where: { artifactId_demandId: { artifactId: target.artifactId, demandId } },
+        });
+        const repository = await this.prisma.db.repository.findUniqueOrThrow({ where: { id: branch.repositoryId } });
+        const externalReference = composeOwnerRepo(repository.externalReference, artifact.name);
+        const workspacePath = await this.developerAgent.resolveWorkspacePath(demandId);
+        const targetPath = this.developerAgent.resolveClonePath(workspacePath, externalReference);
+
+        await this.codeRepositoryProvider.push(externalReference, targetPath, branch.name);
+
+        const latestTest =
+          project.requiredTestSuites.length > 0
+            ? await this.prisma.db.testExecution.findFirstOrThrow({
+                where: { demandId },
+                orderBy: { startedAt: "desc" },
+              })
+            : await this.prisma.db.testExecution.findFirst({
+                where: { demandId },
+                orderBy: { startedAt: "desc" },
+              });
+
+        for (const c of target.commits) {
+          await this.prisma.db.commit.create({
+            data: {
+              branchId: branch.id,
+              sha: c.sha,
+              demandId,
+              artifactId: target.artifactId,
+              testExecutionId: latestTest?.id,
+            },
+          });
+        }
+        results.push({ artifactId: target.artifactId, pushed: target.commits.map((c) => c.sha) });
+      } catch (error) {
+        results.push({
+          artifactId: target.artifactId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return results;
+  }
+
+  /**
    * spec FR-023: content derived server-side, never left for a human to
    * fill in — demand summary, affected artifacts, changed files, test
    * results, and risks (risks default to "none identified" until a risk

@@ -126,3 +126,43 @@ export function useSyncPullRequest() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["pull-requests"] }),
   });
 }
+
+export interface UnpushedCommitsEntry {
+  artifactId: string;
+  commits: { sha: string; message: string }[];
+}
+
+/**
+ * follow-up: the Developer Agent sometimes commits directly via shell during
+ * `/speckit-implement`, bypassing `GitService.commit()` — Postgres never
+ * learns about that commit at all, so this asks the local clone directly
+ * (real `git fetch`, not free) — an explicit "Verificar" trigger (Git tab),
+ * not something that should run on every screen load.
+ */
+export function useUnpushedCommits(demandId: string) {
+  return useQuery({
+    queryKey: ["demand", demandId, "git", "unpushed"],
+    queryFn: () => apiGet<UnpushedCommitsEntry[]>(`/demands/${demandId}/git/unpushed`),
+    enabled: false,
+  });
+}
+
+export interface PushPendingCommitsResult {
+  artifactId: string;
+  pushed?: string[];
+  error?: string;
+}
+
+/** "Enviar" action — Git tab. Pushes whatever useUnpushedCommits found (same Test Gate as a normal commit). */
+export function usePushPendingCommits(demandId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (artifactIds?: string[]) =>
+      apiPost<PushPendingCommitsResult[]>(`/demands/${demandId}/git/push`, { artifactIds }),
+    meta: { successMessage: "Commits enviados." },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["commits"] });
+      queryClient.invalidateQueries({ queryKey: ["demand", demandId, "git"] });
+    },
+  });
+}

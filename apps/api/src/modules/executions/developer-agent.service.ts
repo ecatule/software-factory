@@ -13,6 +13,7 @@ import { WORKSPACE_ROOT, slugify } from "../workspaces/workspaces.service";
 import {
   loadProjectAllowedHosts,
   loadProjectAllowedSecrets,
+  loadProjectExcludedFiles,
   loadProjectSanitizationRules,
 } from "./project-environment-config";
 import { assertRepositoriesAreProductionSafe, sanitizeRepositories } from "./production-reference.guard";
@@ -163,8 +164,9 @@ export class DeveloperAgentService {
     const rules = await loadProjectSanitizationRules(demand.projectId);
     const allowedSecrets = await loadProjectAllowedSecrets(demand.projectId);
     const allowedHosts = await loadProjectAllowedHosts(demand.projectId);
+    const excludedFiles = await loadProjectExcludedFiles(demand.projectId);
 
-    const changes = await sanitizeRepositories(repoPaths, rules);
+    const changes = await sanitizeRepositories(repoPaths, rules, excludedFiles);
     if (changes.length > 0) {
       await this.prisma.db.auditLog.create({
         data: {
@@ -178,7 +180,7 @@ export class DeveloperAgentService {
     }
 
     try {
-      await assertRepositoriesAreProductionSafe(repoPaths, allowedSecrets, allowedHosts);
+      await assertRepositoriesAreProductionSafe(repoPaths, allowedSecrets, allowedHosts, excludedFiles);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await this.prisma.db.auditLog.create({
@@ -291,6 +293,45 @@ export class DeveloperAgentService {
       }
     }
     return snapshot;
+  }
+
+  /**
+   * follow-up: the Developer Agent runs headlessly with real shell access
+   * inside the clone — live-observed it committing directly via `git
+   * commit` during `/speckit-implement`, bypassing `GitService.commit()`
+   * entirely (no Test Gate check, no `Commit` row, no push). Postgres has
+   * no record of a commit that never went through that method, so
+   * detecting "local commits the remote doesn't have yet" can only happen
+   * by asking the clone itself — same best-effort, swallow-on-error
+   * pattern as `snapshotDirtyFiles` above, deliberately not going through
+   * `CodeRepositoryProvider` (this is workspace introspection, not a
+   * provider-abstracted remote operation). Compares explicitly against
+   * `origin/<branchName>` (not `@{u}`) since the caller already knows the
+   * branch name from the `Branch` row — more robust than relying on
+   * whatever upstream tracking happened to be set at clone/checkout time.
+   */
+  async detectUnpushedCommits(
+    entries: Array<{ artifactId: string; repoPath: string; branchName: string }>,
+  ): Promise<Array<{ artifactId: string; commits: { sha: string; message: string }[] }>> {
+    const results: Array<{ artifactId: string; commits: { sha: string; message: string }[] }> = [];
+    for (const { artifactId, repoPath, branchName } of entries) {
+      try {
+        await execAsync(`git fetch origin ${branchName}`, { cwd: repoPath });
+        const { stdout } = await execAsync(`git log --oneline origin/${branchName}..HEAD`, { cwd: repoPath });
+        const lines = stdout.split("\n").filter(Boolean);
+        if (lines.length === 0) continue;
+        results.push({
+          artifactId,
+          commits: lines.map((line) => {
+            const [sha, ...rest] = line.split(" ");
+            return { sha, message: rest.join(" ") };
+          }),
+        });
+      } catch {
+        // not a git repo, no network, remote branch never existed, etc. — best-effort
+      }
+    }
+    return results;
   }
 
   /**

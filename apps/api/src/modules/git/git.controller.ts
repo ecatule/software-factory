@@ -4,7 +4,7 @@ import { JwtAuthGuard } from "../identity/auth/jwt-auth.guard";
 import { RequirePermission } from "../identity/guards/permissions.decorator";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { GitService } from "./git.service";
-import { CreateCommitDto, CreatePullRequestDto } from "./dto/git.dto";
+import { CreateCommitDto, CreatePullRequestDto, PushPendingCommitsDto } from "./dto/git.dto";
 
 @ApiTags("git")
 @ApiBearerAuth()
@@ -38,6 +38,18 @@ export class GitController {
   @RequirePermission("PR_CREATE")
   createPullRequest(@Param("demandId") demandId: string, @Body() dto: CreatePullRequestDto) {
     return this.gitService.createPullRequest(demandId, dto.artifactIds);
+  }
+
+  /** read-only — asks each artifact's local clone whether it's ahead of origin (see GitService.getUnpushedCommits). */
+  @Get("git/unpushed")
+  getUnpushedCommits(@Param("demandId") demandId: string) {
+    return this.gitService.getUnpushedCommits(demandId);
+  }
+
+  @Post("git/push")
+  @RequirePermission("GIT_WRITE")
+  pushPendingCommits(@Param("demandId") demandId: string, @Body() dto: PushPendingCommitsDto) {
+    return this.gitService.pushPendingCommits(demandId, dto.artifactIds);
   }
 
   /** spec User Story 9: branch/commits/PR/checks visible per demand. */

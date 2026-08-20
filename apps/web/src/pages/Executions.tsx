@@ -154,18 +154,24 @@ export function Executions() {
                 <XCircle /> Cancelar
               </Button>
             )}
-            {openExecution.data.status === "FAILED" && hasPermission("AGENT_EXECUTE") && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="self-start"
-                disabled={retryExecution.isPending}
-                onClick={() => retryExecution.mutate(openExecution.data!.id)}
-              >
-                <RotateCcw /> Reexecutar
-              </Button>
-            )}
+            {(openExecution.data.status === "FAILED" || openExecution.data.status === "COMPLETED") &&
+              hasPermission("AGENT_EXECUTE") && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="self-start"
+                  disabled={retryExecution.isPending}
+                  onClick={() => retryExecution.mutate(openExecution.data!.id)}
+                  title={
+                    openExecution.data.status === "COMPLETED"
+                      ? "Roda o /speckit-implement de novo (ex.: para escrever os casos de teste que ficaram pendentes) sem refazer tasks/analyze/checklist, já que SPEC/PLAN não mudaram"
+                      : undefined
+                  }
+                >
+                  <RotateCcw /> Reexecutar
+                </Button>
+              )}
             {(() => {
               const developerOutput = readDeveloperOutput(openExecution.data.output);
               if (!developerOutput.hasUnassistedNote) return null;

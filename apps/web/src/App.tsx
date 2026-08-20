@@ -16,6 +16,7 @@ import { Tests } from "./pages/Tests";
 import { Repositories } from "./pages/Repositories";
 import { GitActivity } from "./pages/GitActivity";
 import { Audit } from "./pages/Audit";
+import { ErrorLogs } from "./pages/ErrorLogs";
 import { Gmud } from "./pages/Gmud";
 import { Settings } from "./pages/Settings";
 import { DemandCockpit } from "./pages/DemandCockpit";
@@ -60,6 +61,14 @@ export function App() {
                   element={
                     <ProtectedRoute permission="AUDIT_READ">
                       <Audit />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/error-logs"
+                  element={
+                    <ProtectedRoute permission="ERROR_LOG_READ">
+                      <ErrorLogs />
                     </ProtectedRoute>
                   }
                 />

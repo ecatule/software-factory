@@ -92,6 +92,20 @@ interface ProjectEnvironmentConfig {
   rules?: SanitizationRule[];
   allowedSecrets?: AllowedSecretVariable[];
   allowedHosts?: AllowedHost[];
+  /**
+   * follow-up: `allowedSecrets`/`allowedHosts` require one entry per
+   * variable/host as they're discovered — live-observed as recurring
+   * whack-a-mole on `docker-compose.yml` for a project that has already
+   * said, generally, "never touch this file" (7+ entries accumulated
+   * before this existed). A basename listed here is skipped entirely by
+   * BOTH `sanitizeRepositories` and `assertRepositoriesAreProductionSafe`
+   * — no rewrite, no block, regardless of what the file contains. Only
+   * meant for files the project owner has already decided are exempt as a
+   * whole (e.g. a docker-compose.yml never touched by this platform to
+   * begin with) — NOT a substitute for `allowedSecrets`/`allowedHosts` on
+   * files that ARE otherwise sanitized/scanned.
+   */
+  excludedFiles?: string[];
 }
 
 /**
@@ -141,4 +155,19 @@ export async function loadProjectAllowedHosts(projectId: string): Promise<Allowe
 
   const config = JSON.parse(raw) as ProjectEnvironmentConfig;
   return config.allowedHosts ?? [];
+}
+
+/** Returns [] when no config file exists for this project, or it has no `excludedFiles` — every file is sanitized/scanned normally by default. */
+export async function loadProjectExcludedFiles(projectId: string): Promise<string[]> {
+  const filePath = path.join(PROJECT_ENV_CONFIG_DIR, `${projectId}.json`);
+  let raw: string;
+  try {
+    raw = await readFile(filePath, "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+
+  const config = JSON.parse(raw) as ProjectEnvironmentConfig;
+  return config.excludedFiles ?? [];
 }

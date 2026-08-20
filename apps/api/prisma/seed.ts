@@ -31,6 +31,10 @@ const PERMISSION_CATALOG = [
   "GIT_WRITE",
   "PR_CREATE",
   "AUDIT_READ",
+  // ErrorLog: failed-request diagnostics (stack traces included) — kept
+  // separate from AUDIT_READ since it's a more sensitive resource, not
+  // every AUDIT_READ holder should also see raw exception internals.
+  "ERROR_LOG_READ",
   // feature 005 (research.md §3): System/SystemArtifact catalog + demand
   // selection + Prompt SPEC generation.
   "SYSTEM_READ",

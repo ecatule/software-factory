@@ -2,6 +2,7 @@ import { useEffect, useState, type PropsWithChildren } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   Activity,
+  AlertTriangle,
   Bot,
   Boxes,
   Building2,
@@ -73,6 +74,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Atividade do Git", to: "/git", icon: Activity },
       { label: "GMUD", to: "/governance/gmud", icon: Rocket, permission: "GMUD_READ" },
       { label: "Auditoria", to: "/audit", icon: ShieldCheck, permission: "AUDIT_READ" },
+      { label: "Logs de Erro", to: "/error-logs", icon: AlertTriangle, permission: "ERROR_LOG_READ" },
       { label: "Configurações", to: "/settings", icon: SettingsIcon, roles: ["admin"] },
     ],
   },

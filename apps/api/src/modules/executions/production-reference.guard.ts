@@ -102,11 +102,12 @@ export interface SanitizationChange {
 export async function sanitizeRepositories(
   repoPaths: string[],
   rules: SanitizationRule[],
+  excludedFiles: string[] = [],
 ): Promise<SanitizationChange[]> {
   if (rules.length === 0) return [];
   const changes: SanitizationChange[] = [];
   for (const repoPath of repoPaths) {
-    changes.push(...(await sanitizeRepository(repoPath, rules)));
+    changes.push(...(await sanitizeRepository(repoPath, rules, excludedFiles)));
   }
   return changes;
 }
@@ -114,12 +115,15 @@ export async function sanitizeRepositories(
 async function sanitizeRepository(
   repoPath: string,
   rules: SanitizationRule[],
+  excludedFiles: string[],
 ): Promise<SanitizationChange[]> {
   const trackedFiles = await listTrackedFiles(repoPath);
   const changes: SanitizationChange[] = [];
+  const excludedBasenames = new Set(excludedFiles.map((f) => f.toLowerCase()));
 
   for (const relativePath of trackedFiles) {
     const basename = path.basename(relativePath).toLowerCase();
+    if (excludedBasenames.has(basename)) continue;
     const applicableRules = rules.filter((rule) =>
       rule.appliesToFiles.some((f) => f.toLowerCase() === basename),
     );
@@ -207,9 +211,10 @@ export async function assertRepositoriesAreProductionSafe(
   repoPaths: string[],
   allowedSecrets: AllowedSecretVariable[] = [],
   allowedHosts: AllowedHost[] = [],
+  excludedFiles: string[] = [],
 ): Promise<void> {
   for (const repoPath of repoPaths) {
-    const finding = await scanRepository(repoPath, allowedSecrets, allowedHosts);
+    const finding = await scanRepository(repoPath, allowedSecrets, allowedHosts, excludedFiles);
     if (finding) {
       throw new Error(
         `Pre-implement safety check failed — refusing to let the Developer Agent edit ` +
@@ -223,17 +228,21 @@ async function scanRepository(
   repoPath: string,
   allowedSecrets: AllowedSecretVariable[],
   allowedHosts: AllowedHost[],
+  excludedFiles: string[],
 ): Promise<ProductionReferenceFinding | null> {
   const trackedFiles = await listTrackedFiles(repoPath);
+  const excludedBasenames = new Set(excludedFiles.map((f) => f.toLowerCase()));
 
   for (const relativePath of trackedFiles) {
     if (BINARY_EXTENSIONS.has(path.extname(relativePath).toLowerCase())) continue;
+
+    const basename = path.basename(relativePath).toLowerCase();
+    if (excludedBasenames.has(basename)) continue;
 
     const absolutePath = path.join(repoPath, relativePath);
     const content = await readTextFile(absolutePath);
     if (content === null) continue;
 
-    const basename = path.basename(relativePath).toLowerCase();
     const applicableHostAllowlist = allowedHosts.filter((entry) =>
       entry.appliesToFiles.some((f) => f.toLowerCase() === basename),
     );

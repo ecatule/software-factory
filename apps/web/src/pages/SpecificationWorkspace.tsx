@@ -140,6 +140,11 @@ const WIZARD_STEPS = [
   "Revisão",
 ] as const;
 
+/** order-independent identity of a selected-artifacts set, used to detect "changed since last save". */
+function artifactSnapshot(artifacts: SystemArtifact[]): string {
+  return [...artifacts.map((a) => a.id)].sort().join(",");
+}
+
 const textareaClass =
   "w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
@@ -173,6 +178,13 @@ export function SpecificationWorkspace() {
   const [businessText, setBusinessText] = useState("");
   const [technicalText, setTechnicalText] = useState("");
   const [technicalTextTouched, setTechnicalTextTouched] = useState(false);
+  // follow-up: required-step gating (user request) — Parte 1 precisa de
+  // Informações de negócio + Insumos técnicos preenchidos; Parte 2 precisa
+  // de ao menos um artefato selecionado E salvo (reportado por
+  // `SystemSelection` via `onValidityChange`, já que a seleção/"Salvar
+  // seleção" vivem naquele componente); Parte 4 precisa do clique em
+  // "Anexar" (o próprio `uploadVersion` já vive aqui, sem plumbing extra).
+  const [systemsValid, setSystemsValid] = useState(false);
 
   // follow-up: "Informações de negócio"/"Insumos técnicos" are local state,
   // scoped to this component instance — but `specificationId` (the route
@@ -191,6 +203,7 @@ export function SpecificationWorkspace() {
       setBusinessText("");
       setTechnicalText("");
       setTechnicalTextTouched(false);
+      uploadVersion.reset();
     }
     lastSeenIncrementId.current = currentIncrementId;
   }, [currentIncrementId]);
@@ -214,6 +227,21 @@ export function SpecificationWorkspace() {
     await uploadVersion.mutateAsync({ specifyMarkdown, planMarkdown, reason: "Enviado de fonte externa" });
   }
 
+  const infoValid = businessText.trim() !== "" && technicalText.trim() !== "";
+  // read-only users can't act on Parte 4 (UploadPanel only renders for
+  // SPECIFICATION_WRITE) — never block their navigation on a step they
+  // have no way to complete.
+  const uploadValid = !hasPermission("SPECIFICATION_WRITE") || uploadVersion.isSuccess;
+  const stepValid = [infoValid, systemsValid, true, uploadValid, true];
+  const firstInvalidStep = stepValid.findIndex((valid) => !valid);
+  const maxReachableStep = firstInvalidStep === -1 ? WIZARD_STEPS.length - 1 : firstInvalidStep;
+  const canAdvanceFromCurrentStep = stepValid[step] ?? true;
+  const stepValidationMessage: Record<number, string> = {
+    0: "Preencha Informações de negócio e Insumos técnicos antes de avançar.",
+    1: 'Selecione ao menos um artefato e clique em "Salvar seleção" antes de avançar.',
+    3: 'Clique em "Anexar" antes de avançar.',
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -228,7 +256,7 @@ export function SpecificationWorkspace() {
         </div>
       </div>
 
-      <WizardSteps current={step} onJump={setStep} />
+      <WizardSteps current={step} onJump={setStep} maxReachable={maxReachableStep} />
 
       <div style={{ display: step === 0 ? undefined : "none" }} className="flex flex-col gap-6">
         <section className="flex flex-col gap-2">
@@ -258,7 +286,7 @@ export function SpecificationWorkspace() {
       </div>
 
       <div style={{ display: step === 1 ? undefined : "none" }}>
-        {demandId && <SystemSelection demandId={demandId} />}
+        {demandId && <SystemSelection demandId={demandId} onValidityChange={setSystemsValid} />}
       </div>
 
       <div style={{ display: step === 2 ? undefined : "none" }}>
@@ -278,42 +306,62 @@ export function SpecificationWorkspace() {
 
       <div style={{ display: step === 4 ? undefined : "none" }}>{demandId && <ReviewStep demandId={demandId} />}</div>
 
-      <div className="flex items-center justify-between border-t border-border pt-4">
-        {step > 0 ? (
-          <Button type="button" variant="outline" onClick={() => setStep(step - 1)}>
-            <ChevronLeft /> Voltar
-          </Button>
-        ) : (
-          <span />
-        )}
-        {step < WIZARD_STEPS.length - 1 && (
-          <Button type="button" onClick={() => setStep(step + 1)}>
-            Avançar <ChevronRight />
-          </Button>
+      <div className="flex flex-col gap-2 border-t border-border pt-4">
+        <div className="flex items-center justify-between">
+          {step > 0 ? (
+            <Button type="button" variant="outline" onClick={() => setStep(step - 1)}>
+              <ChevronLeft /> Voltar
+            </Button>
+          ) : (
+            <span />
+          )}
+          {step < WIZARD_STEPS.length - 1 && (
+            <Button type="button" onClick={() => setStep(step + 1)} disabled={!canAdvanceFromCurrentStep}>
+              Avançar <ChevronRight />
+            </Button>
+          )}
+        </div>
+        {!canAdvanceFromCurrentStep && stepValidationMessage[step] && (
+          <p className="self-end text-sm font-medium text-destructive">{stepValidationMessage[step]}</p>
         )}
       </div>
     </div>
   );
 }
 
-function WizardSteps({ current, onJump }: { current: number; onJump: (step: number) => void }) {
+function WizardSteps({
+  current,
+  onJump,
+  maxReachable,
+}: {
+  current: number;
+  onJump: (step: number) => void;
+  maxReachable: number;
+}) {
   return (
     <div className="flex flex-wrap gap-2 border-b border-border pb-4">
-      {WIZARD_STEPS.map((label, index) => (
-        <button
-          key={label}
-          type="button"
-          onClick={() => onJump(index)}
-          className={cn(
-            "rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors",
-            index === current
-              ? "border-primary bg-primary text-primary-foreground"
-              : "border-border bg-card text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-          )}
-        >
-          Parte {index + 1}: {label}
-        </button>
-      ))}
+      {WIZARD_STEPS.map((label, index) => {
+        const isLocked = index > maxReachable;
+        return (
+          <button
+            key={label}
+            type="button"
+            onClick={() => !isLocked && onJump(index)}
+            disabled={isLocked}
+            title={isLocked ? "Complete a etapa atual antes de avançar" : undefined}
+            className={cn(
+              "rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors",
+              index === current
+                ? "border-primary bg-primary text-primary-foreground"
+                : isLocked
+                  ? "cursor-not-allowed border-border bg-card text-muted-foreground/50"
+                  : "border-border bg-card text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+            )}
+          >
+            Parte {index + 1}: {label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -554,7 +602,13 @@ function SiblingDocumentModal({
  * aos associados ao Cliente da demanda — e, por Sistema selecionado, seus
  * Artefatos ativos.
  */
-function SystemSelection({ demandId }: { demandId: string }) {
+function SystemSelection({
+  demandId,
+  onValidityChange,
+}: {
+  demandId: string;
+  onValidityChange?: (valid: boolean) => void;
+}) {
   const { hasPermission } = useAuth();
   const { data: systemsData } = useDemandSystems(demandId);
   const setSystems = useSetDemandSystems(demandId);
@@ -570,6 +624,13 @@ function SystemSelection({ demandId }: { demandId: string }) {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  // follow-up: required-step gating — `saveMessage` alone is stale-prone
+  // (never cleared when the selection changes AFTER a save), so this
+  // tracks the exact artifact-id set last confirmed persisted (either by
+  // `saveSelection()` succeeding, or by the initial server seed — a demand
+  // whose selection was already saved in an earlier session must not force
+  // a redundant re-save just to unlock "Avançar").
+  const [lastSavedSnapshot, setLastSavedSnapshot] = useState<string | null>(null);
   const { data: artifactsData } = useDemandSystemArtifacts(demandId, debouncedSearch, selectedSystemIds);
 
   useEffect(() => {
@@ -583,16 +644,25 @@ function SystemSelection({ demandId }: { demandId: string }) {
   useEffect(() => {
     if (artifactsData && seededArtifactsFor.current !== demandId) {
       setSelectedArtifacts(artifactsData.selected);
+      setLastSavedSnapshot(artifactSnapshot(artifactsData.selected));
       seededArtifactsFor.current = demandId;
     }
   }, [artifactsData, demandId]);
+
+  const canWrite = hasPermission("DEMAND_SYSTEM_WRITE");
+  // read-only users can't click "Salvar seleção" (not rendered for them) —
+  // never block their navigation on a step they have no way to complete.
+  const isSavedAndValid =
+    !canWrite || (selectedArtifacts.length > 0 && artifactSnapshot(selectedArtifacts) === lastSavedSnapshot);
+  useEffect(() => {
+    onValidityChange?.(isSavedAndValid);
+  }, [isSavedAndValid, onValidityChange]);
 
   useEffect(() => {
     const timeout = setTimeout(() => setDebouncedSearch(artifactSearch), 300);
     return () => clearTimeout(timeout);
   }, [artifactSearch]);
 
-  const canWrite = hasPermission("DEMAND_SYSTEM_WRITE");
   const canReadDependencyMap = hasPermission("DEPENDENCY_ANALYZER_READ");
   const selectedArtifactIds = new Set(selectedArtifacts.map((a) => a.id));
 
@@ -661,6 +731,7 @@ function SystemSelection({ demandId }: { demandId: string }) {
     setSaveMessage(null);
     await setSystems.mutateAsync(selectedSystemIds);
     await setArtifacts.mutateAsync(selectedArtifacts.map((a) => a.id));
+    setLastSavedSnapshot(artifactSnapshot(selectedArtifacts));
     setSaveMessage("Seleção salva com sucesso.");
   }
 

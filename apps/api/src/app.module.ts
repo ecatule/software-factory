@@ -1,10 +1,11 @@
 import { Module } from "@nestjs/common";
-import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { PrismaModule } from "./common/prisma/prisma.module";
 import { LoggingModule } from "./common/logging/logging.module";
 import { QueueModule } from "./common/queue/queue.module";
 import { AuditInterceptor } from "./common/interceptors/audit.interceptor";
+import { ErrorLogFilter } from "./common/filters/error-log.filter";
 import { RbacGuard } from "./modules/identity/guards/rbac.guard";
 import { JwtAuthGuard } from "./modules/identity/auth/jwt-auth.guard";
 import { AuthModule } from "./modules/identity/auth/auth.module";
@@ -18,6 +19,7 @@ import { ArtifactsModule } from "./modules/artifacts/artifacts.module";
 import { TestsModule } from "./modules/tests/tests.module";
 import { GitModule } from "./modules/git/git.module";
 import { AuditModule } from "./modules/audit/audit.module";
+import { ErrorLogsModule } from "./modules/error-logs/error-logs.module";
 import { DashboardModule } from "./modules/dashboard/dashboard.module";
 import { AgentsModule } from "./modules/agents/agents.module";
 import { RepositoriesModule } from "./modules/repositories/repositories.module";
@@ -45,6 +47,7 @@ import { GovernanceModule } from "./modules/governance/governance.module";
     TestsModule,
     GitModule,
     AuditModule,
+    ErrorLogsModule,
     DashboardModule,
     AgentsModule,
     RepositoriesModule,
@@ -64,6 +67,7 @@ import { GovernanceModule } from "./modules/governance/governance.module";
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RbacGuard },
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
+    { provide: APP_FILTER, useClass: ErrorLogFilter },
   ],
 })
 export class AppModule {}

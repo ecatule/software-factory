@@ -15,3 +15,11 @@ export class CreatePullRequestDto {
   @IsUUID("all", { each: true })
   artifactIds?: string[];
 }
+
+export class PushPendingCommitsDto {
+  /** Omitted/empty = every artifact with unpushed local commits. */
+  @IsOptional()
+  @IsArray()
+  @IsUUID("all", { each: true })
+  artifactIds?: string[];
+}

@@ -58,6 +58,18 @@ const IMPLEMENT_UNATTENDED_NOTE =
   "human had already replied 'yes, proceed anyway' — continue straight into implementation " +
   "instead of stopping to ask.";
 
+const IMPLEMENT_TEST_CASES_NOTE =
+  "Test cases: whenever the target repository already has a test framework configured " +
+  "(a real test script in package.json, existing *.test.*/*.spec.* files, etc.), you MUST write " +
+  "the corresponding test cases for the functionality you implement, as part of the deliverable — " +
+  "even when you cannot RUN them in this environment (no live Neo4j/API/frontend). Mark them in " +
+  "tasks.md as written-but-not-executed, with a clear note of what a human needs to run manually " +
+  "before merge. Only when the repository has no test framework at all, skip writing tests and " +
+  "record that as an infrastructure gap instead — do not attempt to scaffold a new test framework " +
+  "from scratch as part of an unrelated feature. Do NOT attempt to execute the test suite yourself " +
+  "(no `npm test`/`jest`/equivalent run) — writing the test files is the deliverable here, not " +
+  "running them; leave that entirely to whoever validates this later in a real environment.";
+
 const DIACRITICS_PATTERN = new RegExp("[\\u0300-\\u036f]", "g");
 
 /** Mirrors WorkspacesService's slugify (apps/api) — duplicated rather than imported, since packages/infrastructure can't depend on apps/api. Capped at 5 words for a readable `specs/001-<slug>/` directory name. */
@@ -163,7 +175,7 @@ export class SpecKitProvider implements SDDProvider {
     await this.prepareWorkspace(input.workspacePath, input.context);
     const summary = await this.runClaude(
       "implement",
-      `/speckit-implement\n\n${IMPLEMENT_UNATTENDED_NOTE}`,
+      `/speckit-implement\n\n${IMPLEMENT_UNATTENDED_NOTE}\n\n${IMPLEMENT_TEST_CASES_NOTE}`,
       input,
     );
     const filesChanged = await this.collectChangedFiles(input.workspacePath);
