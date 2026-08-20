@@ -19,6 +19,7 @@ import { Audit } from "./pages/Audit";
 import { ErrorLogs } from "./pages/ErrorLogs";
 import { Gmud } from "./pages/Gmud";
 import { Settings } from "./pages/Settings";
+import { PipelineConfig } from "./pages/PipelineConfig";
 import { DemandCockpit } from "./pages/DemandCockpit";
 import { ProtectedRoute } from "./routes/ProtectedRoute";
 import { NavShell } from "./components/NavShell";
@@ -69,6 +70,14 @@ export function App() {
                   element={
                     <ProtectedRoute permission="ERROR_LOG_READ">
                       <ErrorLogs />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/pipeline-config"
+                  element={
+                    <ProtectedRoute permission="PIPELINE_CONFIG_WRITE">
+                      <PipelineConfig />
                     </ProtectedRoute>
                   }
                 />

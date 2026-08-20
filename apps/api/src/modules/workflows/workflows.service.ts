@@ -124,6 +124,26 @@ export class WorkflowsService {
   }
 
   /**
+   * feature 006 (contracts/qa-functional-testing.md): read-only check used
+   * by `QaController` to gate `POST .../functional-tests/run` with a 422 —
+   * "at or after" a given stage in this demand's workflow linear `order`,
+   * same index comparison `advanceToStage` already uses, without mutating
+   * anything.
+   */
+  async isAtOrAfterStage(demandId: string, targetStageKey: string): Promise<boolean> {
+    const demand = await this.prisma.db.demand.findUniqueOrThrow({ where: { id: demandId } });
+    const workflow = await this.resolveWorkflow(demand.projectId);
+    const stages = await this.prisma.db.workflowStage.findMany({
+      where: { workflowId: workflow.id },
+      orderBy: { order: "asc" },
+    });
+    const currentIndex = stages.findIndex((s) => s.key === demand.status);
+    const targetIndex = stages.findIndex((s) => s.key === targetStageKey);
+    if (currentIndex === -1 || targetIndex === -1) return false;
+    return currentIndex >= targetIndex;
+  }
+
+  /**
    * feature 004 (spec FR-011, research.md §6): explicit AuditLog write so
    * stage transitions are captured even when triggered from a BullMQ worker
    * (ExecutionsProcessor calling advanceToNextStage), which the global

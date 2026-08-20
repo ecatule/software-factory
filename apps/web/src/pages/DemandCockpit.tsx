@@ -9,6 +9,7 @@ import { ArtifactsTab } from "../components/cockpit-tabs/ArtifactsTab";
 import { TasksTab } from "../components/cockpit-tabs/TasksTab";
 import { DevelopmentTab } from "../components/cockpit-tabs/DevelopmentTab";
 import { TestsTab } from "../components/cockpit-tabs/TestsTab";
+import { QaTab } from "../components/cockpit-tabs/QaTab";
 import { GitTab } from "../components/cockpit-tabs/GitTab";
 import { TimelineTab } from "../components/cockpit-tabs/TimelineTab";
 import { AuditTab } from "../components/cockpit-tabs/AuditTab";
@@ -24,6 +25,7 @@ const TABS = [
   { key: "tasks", label: "Tarefas" },
   { key: "development", label: "Desenvolvimento" },
   { key: "tests", label: "Testes" },
+  { key: "qa", label: "QA" },
   { key: "git", label: "Git" },
   { key: "timeline", label: "Linha do tempo" },
   { key: "audit", label: "Auditoria" },
@@ -92,6 +94,7 @@ export function DemandCockpit() {
       {activeTab === "tasks" && <TasksTab />}
       {activeTab === "development" && <DevelopmentTab workspace={workspace.data} />}
       {activeTab === "tests" && <TestsTab demandId={demandId} />}
+      {activeTab === "qa" && <QaTab demandId={demandId} />}
       {activeTab === "git" && (
         <GitTab demandId={demandId} activity={gitActivity.data} artifacts={artifacts.data} />
       )}

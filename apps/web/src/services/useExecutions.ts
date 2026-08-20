@@ -10,7 +10,7 @@ export interface Execution {
   demandId: string;
   /** follow-up: joined server-side (demandId → Demand, no Prisma relation exists) so the UI can show a title instead of a raw id. */
   demandTitle: string | null;
-  status: "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
+  status: "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED" | "AWAITING_MANUAL_STAGE";
   /** follow-up: live progress marker for the "developer" agent's multi-step pipeline (branches/cloning/safety-check/tasks/analyze/checklist/implement) — null for other agent types until their stage starts. */
   pipelineStage: string | null;
   startedAt: string | null;
@@ -29,6 +29,7 @@ export const PIPELINE_STAGE_LABELS: Record<string, string> = {
   analyze: "Analisando consistência (/speckit-analyze)",
   checklist: "Gerando checklist (/speckit-checklist)",
   implement: "Implementando (/speckit-implement)",
+  "qa-generation": "Gerando casos de teste (QA)",
   commit: "Commitando alterações",
 };
 
@@ -44,6 +45,7 @@ export const EXECUTION_STATUS_LABELS: Record<string, string> = {
   COMPLETED: "Concluída",
   FAILED: "Falhou",
   CANCELLED: "Cancelada",
+  AWAITING_MANUAL_STAGE: "Aguardando avanço manual",
 };
 
 export function executionStatusLabel(status: string): string {
@@ -69,7 +71,7 @@ export function readDeveloperOutput(output: unknown): DeveloperExecutionOutput {
 
 /** feature 003 (research.md §10): polls a single execution, same POLL_INTERVAL_MS convention as useDemandPolling. */
 const POLL_INTERVAL_MS = 2000;
-const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "CANCELLED"]);
+const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "CANCELLED", "AWAITING_MANUAL_STAGE"]);
 
 /**
  * follow-up: previously polled automatically while any row was non-terminal
@@ -117,6 +119,40 @@ export function useRetryExecution() {
     mutationFn: (executionId: string) => apiPost<Execution>(`/executions/${executionId}/retry`),
     meta: { successMessage: "Execução reiniciada." },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["executions"] }),
+  });
+}
+
+/**
+ * feature 006 (pipeline configurável): `POST /executions/:id/advance` — só
+ * válido pra uma execução em `AWAITING_MANUAL_STAGE`. Cria uma NOVA
+ * execução (mesmo padrão de "Reexecutar") retomando exatamente da etapa
+ * pendente — pode parar de novo, na etapa seguinte, se ela também for
+ * manual.
+ */
+export function useAdvanceExecution() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (executionId: string) => apiPost<Execution>(`/executions/${executionId}/advance`),
+    meta: { successMessage: "Etapa avançada." },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["executions"] }),
+  });
+}
+
+export interface ExecutionStageLog {
+  id: string;
+  executionId: string;
+  stage: string;
+  status: "RUNNING" | "COMPLETED" | "FAILED";
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+/** feature 006 (pipeline configurável): histórico real de início/fim por etapa — distinto de `pipelineStage` (só a etapa atual). */
+export function useExecutionStages(executionId: string | null) {
+  return useQuery({
+    queryKey: ["execution", executionId, "stages"],
+    queryFn: () => apiGet<ExecutionStageLog[]>(`/executions/${executionId}/stages`),
+    enabled: executionId !== null,
   });
 }
 

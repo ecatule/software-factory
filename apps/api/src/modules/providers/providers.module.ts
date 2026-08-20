@@ -6,16 +6,22 @@ import {
   GRAPH_STORE_PROVIDER,
   LLM_PROVIDER,
   SDD_PROVIDER,
+  TEST_EXECUTOR_PROVIDER,
   type LLMProvider,
+  type TestExecutorProvider,
 } from "@software-factory/domain";
 import {
+  ApiTestExecutorProvider,
+  BrowserTestExecutorProvider,
   ChatGPTProvider,
   ClaudeProvider,
+  CompositeTestExecutorProvider,
   GitHubRepositoryProvider,
   MondayChangeManagementProvider,
   MondayDemandProvider,
   Neo4jGraphStoreProvider,
   SpecKitProvider,
+  UnitTestExecutorProvider,
 } from "@software-factory/infrastructure";
 import { ProvidersController } from "./providers.controller";
 import { ProviderConfigurationResolver } from "./provider-configuration.resolver";
@@ -93,6 +99,18 @@ import { resolveAuthProfilesFromEnv } from "./auth-profiles";
           database: process.env.NEO4J_DATABASE || undefined,
         }),
     },
+    {
+      // feature 006 (spec User Story 3, tasks.md T027): um único token que
+      // delega por TestCase.type — registrado aqui (e não no Foundational)
+      // porque só a partir de US3 uma implementação concreta existe.
+      provide: TEST_EXECUTOR_PROVIDER,
+      useFactory: (): TestExecutorProvider =>
+        new CompositeTestExecutorProvider([
+          new ApiTestExecutorProvider(),
+          new BrowserTestExecutorProvider(),
+          new UnitTestExecutorProvider(),
+        ]),
+    },
     ProviderConfigurationResolver,
   ],
   exports: [
@@ -102,6 +120,7 @@ import { resolveAuthProfilesFromEnv } from "./auth-profiles";
     SDD_PROVIDER,
     CODE_REPOSITORY_PROVIDER,
     GRAPH_STORE_PROVIDER,
+    TEST_EXECUTOR_PROVIDER,
     ProviderConfigurationResolver,
   ],
 })

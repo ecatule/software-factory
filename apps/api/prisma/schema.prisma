@@ -337,6 +337,10 @@ model Project {
   technologies       String[]
   branchNamingPolicy String   @default("<type>/<client>/<ticket>-<slug>") @map("branch_naming_policy")
   requiredTestSuites String[] @map("required_test_suites")
+  // feature 006 (spec FR-008/FR-009): controla se a execução automática de
+  // testes pode ocorrer como parte do pipeline deste Projeto — desabilitada
+  // por padrão, alteração sempre uma ação explícita nesta tela.
+  qaAutoExecutionEnabled Boolean @default(false) @map("qa_auto_execution_enabled")
 
   // feature 004 (spec FR-001) had productionBranch/homologationBranch here;
   // moved to Repository (branches are a per-repo git concept). follow-up:
@@ -498,6 +502,12 @@ enum AgentExecutionStatus {
   COMPLETED
   FAILED
   CANCELLED
+  // feature 006 (pipeline configurável): estado terminal PARA ESTA LINHA —
+  // a execução parou porque a próxima etapa do pipeline está configurada
+  // como manual (PipelineStageConfig). "Avançar etapa" cria uma NOVA
+  // AgentExecution (mesmo padrão já usado por ExecutionsService.retry()),
+  // carregando `resumeState` pra continuar exatamente dali.
+  AWAITING_MANUAL_STAGE
 }
 
 model Agent {
@@ -548,10 +558,65 @@ model AgentExecution {
   // pipeline from scratch.
   specVersionId           String?              @map("spec_version_id") @db.Uuid
   planVersionId           String?              @map("plan_version_id") @db.Uuid
+  // feature 006 (pipeline configurável): estado necessário pra retomar
+  // exatamente de onde esta execução parou quando status =
+  // AWAITING_MANUAL_STAGE — dirtyBefore (snapshot pré-implement, serializado),
+  // resultado do implement, resultado da geração de QA, etc. Nunca lido fora
+  // de ExecutionsProcessor.
+  resumeState             Json?                @map("resume_state")
 
   specificationVersions SpecificationVersion[]
+  stageLogs             ExecutionStageLog[]
 
   @@map("agent_executions")
+}
+
+// feature 006 (pipeline configurável): histórico de início/fim de cada etapa
+// do pipeline "developer" — `AgentExecution.pipelineStage` só guarda a etapa
+// ATUAL (sobrescrita a cada mudança), sem histórico nenhum. Uma linha por
+// etapa iniciada.
+model ExecutionStageLog {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  executionId String         @map("execution_id") @db.Uuid
+  execution   AgentExecution @relation(fields: [executionId], references: [id])
+  stage       String
+  // "RUNNING" | "COMPLETED" | "FAILED"
+  status      String    @default("RUNNING")
+  startedAt   DateTime  @default(now()) @map("started_at")
+  finishedAt  DateTime? @map("finished_at")
+
+  @@index([executionId])
+  @@map("execution_stage_logs")
+}
+
+// feature 006 (pipeline configurável): configuração GLOBAL da plataforma —
+// uma linha por etapa nomeada do pipeline "developer", controlando se ela
+// roda automaticamente ou exige um clique manual ("Avançar etapa") pra
+// prosseguir. Todas `AUTO` por padrão (seed.ts) — preserva o comportamento
+// já existente pra quem não mexer em nada.
+model PipelineStageConfig {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  stage String @unique
+  // "AUTO" | "MANUAL"
+  mode  String @default("AUTO")
+
+  @@map("pipeline_stage_configs")
 }
 
 // ---------------------------------------------------------------------------
@@ -893,6 +958,92 @@ model PullRequest {
   url               String?
 
   @@map("pull_requests")
+}
+
+// ---------------------------------------------------------------------------
+// TestCase / FunctionalTestExecution / TestEvidence (feature 006, spec
+// FR-001-FR-018): os Casos de Teste gerados obrigatoriamente pelo Agente QA
+// (Agent.type = "qa") logo após o `implement`, sem execução — e o registro
+// de sua execução funcional manual posterior em homologação.
+// ---------------------------------------------------------------------------
+
+model TestCase {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  demandId   String  @map("demand_id") @db.Uuid
+  artifactId String? @map("artifact_id") @db.Uuid
+  title      String
+  // "API" | "UI" | "UNIT" | "FUNCTIONAL" | "REGRESSION" — string livre, mesmo padrão de Artifact.type (spec FR-007)
+  type       String
+  // "POSITIVE" | "NEGATIVE" | "AUTHORIZATION" | "AUTHENTICATION" | "INTEGRATION" | "REGRESSION" (spec FR-005)
+  scenario       String
+  preconditions  String?
+  data           Json?
+  steps          String
+  expectedResult String  @map("expected_result")
+  criticality    String?
+  automatable    Boolean @default(false)
+  // qual execução do Agente QA (AgentExecution) gerou este caso
+  generatedByExecutionId String? @map("generated_by_execution_id") @db.Uuid
+
+  functionalTestExecutions FunctionalTestExecution[]
+
+  @@index([demandId])
+  @@map("test_cases")
+}
+
+model FunctionalTestExecution {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  testCaseId  String    @map("test_case_id") @db.Uuid
+  testCase    TestCase  @relation(fields: [testCaseId], references: [id])
+  demandId    String    @map("demand_id") @db.Uuid
+  environment String
+  startedAt   DateTime? @map("started_at")
+  finishedAt  DateTime? @map("finished_at")
+  // "NOT_EXECUTED" | "RUNNING" | "PASS" | "FAIL" | "BLOCKED" (spec FR-014)
+  status String  @default("NOT_EXECUTED")
+  error  String?
+
+  evidences TestEvidence[]
+
+  @@index([demandId])
+  @@map("functional_test_executions")
+}
+
+model TestEvidence {
+  id        String    @id @default(uuid()) @db.Uuid
+  stAtivo   Boolean   @default(true) @map("st_ativo")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  version   Int       @default(1)
+
+  functionalTestExecutionId String                  @map("functional_test_execution_id") @db.Uuid
+  functionalTestExecution   FunctionalTestExecution @relation(fields: [functionalTestExecutionId], references: [id])
+  // "screenshot" | "video" | "trace" | "request" | "response" | "logs" (spec FR-014)
+  type       String
+  storageRef String? @map("storage_ref")
+  // texto inline para request/response/logs — quando não é um binário (ver storageRef)
+  content String?
+
+  @@map("test_evidences")
 }
 
 // ---------------------------------------------------------------------------

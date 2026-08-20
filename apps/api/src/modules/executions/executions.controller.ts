@@ -45,6 +45,19 @@ export class ExecutionsController {
     return this.executionsService.retry(id);
   }
 
+  /** feature 006 (pipeline configurável): retoma uma execução parada em AWAITING_MANUAL_STAGE. */
+  @Post(":id/advance")
+  @RequirePermission("AGENT_EXECUTE")
+  advance(@Param("id") id: string) {
+    return this.executionsService.advance(id);
+  }
+
+  /** feature 006 (pipeline configurável): histórico início/fim por etapa. */
+  @Get(":id/stages")
+  stages(@Param("id") id: string) {
+    return this.executionsService.stages(id);
+  }
+
   @Post(":id/cancel")
   cancel(@Param("id") id: string) {
     return this.executionsService.cancel(id);

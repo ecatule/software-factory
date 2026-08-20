@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { InjectQueue } from "@nestjs/bullmq";
 import { Queue } from "bullmq";
 import { SDD_PROVIDER, type SDDProvider } from "@software-factory/domain";
@@ -99,6 +99,11 @@ export class ExecutionsService {
    * `ExecutionsProcessor`). If either doesn't hold, retries the full
    * pipeline exactly as before — this is purely an optimization, never a
    * behavior change for the unsafe case.
+   *
+   * feature 006 (pipeline configurável): `resumeFromStage` foi unificado em
+   * `resumeStage` — o mesmo campo que `advance()` usa pra retomar de uma
+   * etapa manual (`ExecutionsProcessor` `DEVELOPER_STAGE_ORDER`), evitando
+   * dois mecanismos paralelos de "pular etapas já feitas".
    */
   async retry(id: string) {
     const original = await this.get(id);
@@ -117,7 +122,7 @@ export class ExecutionsService {
         current.specVersionId === original.specVersionId &&
         current.planVersionId === original.planVersionId
       ) {
-        input.resumeFromStage = "implement";
+        input.resumeStage = "implement";
       }
     }
 
@@ -127,6 +132,40 @@ export class ExecutionsService {
       providerConfigurationId: original.providerConfigurationId ?? undefined,
       pipelineStage: original.pipelineStage ?? undefined,
       input,
+    });
+  }
+
+  /**
+   * feature 006 (pipeline configurável): "Avançar etapa" — cria uma NOVA
+   * AgentExecution (mesmo padrão de `retry()`, nunca muta a linha parada)
+   * que retoma exatamente da etapa manual pendente, usando o `resumeState`
+   * persistido por `ExecutionsProcessor.gate()`. Roda só aquela etapa (e
+   * qualquer etapa AUTO logo depois) — pausa de novo se a etapa seguinte
+   * também for MANUAL.
+   */
+  async advance(id: string) {
+    const original = await this.get(id);
+    if (original.status !== "AWAITING_MANUAL_STAGE" || !original.pipelineStage) {
+      throw new BadRequestException("Execution is not awaiting a manual pipeline stage");
+    }
+
+    return this.create({
+      agentId: original.agentId,
+      demandId: original.demandId,
+      providerConfigurationId: original.providerConfigurationId ?? undefined,
+      pipelineStage: original.pipelineStage,
+      input: {
+        resumeStage: original.pipelineStage,
+        resumeState: original.resumeState ?? {},
+      },
+    });
+  }
+
+  /** feature 006 (pipeline configurável): histórico real de início/fim por etapa desta execução — ver ExecutionStageLog. */
+  stages(id: string) {
+    return this.prisma.db.executionStageLog.findMany({
+      where: { executionId: id },
+      orderBy: { startedAt: "asc" },
     });
   }
 

@@ -4,6 +4,7 @@ import type { Job } from "bullmq";
 import {
   LLM_PROVIDER,
   SDD_PROVIDER,
+  type ImplementationResult,
   type LLMProvider,
   type SDDProvider,
   type SpecificationProposal,
@@ -16,6 +17,9 @@ import { SpecificationContextService } from "../specifications/specification-con
 import { IncrementsService } from "../increments/increments.service";
 import { ProviderConfigurationResolver } from "../providers/provider-configuration.resolver";
 import { GitService } from "../git/git.service";
+import { QaGenerationService, type GenerateTestCasesResult } from "../qa/qa-generation.service";
+import { PipelineConfigService } from "../pipeline-config/pipeline-config.service";
+import { DEVELOPER_STAGE_ORDER } from "../pipeline-config/pipeline-stage-order";
 import { DeveloperAgentService } from "./developer-agent.service";
 import type { ExecutionJobData } from "./executions.service";
 import { extractUnassistedNote } from "./implementation-note";
@@ -28,6 +32,38 @@ const STAGE_TO_DOCUMENT_TYPE: Record<string, SpecDocumentType> = {
   tasks: "TASKS",
   analyze: "ANALYSIS",
 };
+
+/**
+ * feature 006 (pipeline configurável): lançado por `gate()` quando a
+ * PRÓXIMA etapa está configurada como `MANUAL` — NÃO é uma falha genuína
+ * (ver o `catch` de `process()`, que trata isso separado do resto). A
+ * execução já foi marcada `AWAITING_MANUAL_STAGE` antes de lançar.
+ */
+class PipelinePausedSignal extends Error {
+  constructor(readonly stage: string) {
+    super(`Pipeline paused before manual stage "${stage}"`);
+  }
+}
+
+interface DeveloperResumeState {
+  dirtyBefore?: Record<string, string[]>;
+  implementResult?: ImplementationResult;
+  qaResult?: GenerateTestCasesResult;
+  postImplementNote?: {
+    hasUnassistedNote?: boolean;
+    unassistedNoteExcerpt?: string | null;
+    specVersionId?: string;
+    tasksVersionId?: string;
+  };
+}
+
+function serializeDirtyBefore(map: Map<string, Set<string>>): Record<string, string[]> {
+  return Object.fromEntries([...map.entries()].map(([repoPath, files]) => [repoPath, [...files]]));
+}
+
+function deserializeDirtyBefore(serialized: Record<string, string[]> | undefined): Map<string, Set<string>> {
+  return new Map(Object.entries(serialized ?? {}).map(([repoPath, files]) => [repoPath, new Set(files)]));
+}
 
 /**
  * spec User Story 2 (Specification pipeline) / User Story 6 (Developer
@@ -45,6 +81,8 @@ export class ExecutionsProcessor extends WorkerHost {
     private readonly workflows: WorkflowsService,
     private readonly developerAgent: DeveloperAgentService,
     private readonly gitService: GitService,
+    private readonly qaGenerationService: QaGenerationService,
+    private readonly pipelineConfigService: PipelineConfigService,
     private readonly specificationContext: SpecificationContextService,
     private readonly increments: IncrementsService,
     private readonly providerConfiguration: ProviderConfigurationResolver,
@@ -75,6 +113,20 @@ export class ExecutionsProcessor extends WorkerHost {
       const constitution = demand.project.constitution ?? undefined;
 
       if (execution.agent.type === "developer") {
+        // feature 006 (pipeline configurável): fecha o log RUNNING da etapa
+        // anterior (se houver) e abre um novo — histórico real de
+        // início/fim por etapa, distinto de `pipelineStage` (que só guarda
+        // a etapa ATUAL, sobrescrita a cada chamada).
+        let openStageLogId: string | undefined;
+        const closeCurrentStageLog = async (status: "COMPLETED" | "FAILED") => {
+          if (!openStageLogId) return;
+          await this.prisma.db.executionStageLog.update({
+            where: { id: openStageLogId },
+            data: { status, finishedAt: new Date() },
+          });
+          openStageLogId = undefined;
+        };
+
         // follow-up: the developer pipeline runs several minutes-long steps
         // in sequence inside ONE AgentExecution — without this, the only
         // externally visible state was QUEUED/RUNNING for the whole
@@ -82,8 +134,69 @@ export class ExecutionsProcessor extends WorkerHost {
         // progress. Reuses the existing (otherwise unused-by-this-branch)
         // `pipelineStage` column as a live progress marker, polled by the
         // frontend the same way `status` already is.
-        const updateProgress = (pipelineStage: string) =>
-          this.prisma.db.agentExecution.update({ where: { id: execution.id }, data: { pipelineStage } });
+        const updateProgress = async (pipelineStage: string) => {
+          await closeCurrentStageLog("COMPLETED");
+          await this.prisma.db.agentExecution.update({ where: { id: execution.id }, data: { pipelineStage } });
+          const log = await this.prisma.db.executionStageLog.create({
+            data: { executionId: execution.id, stage: pipelineStage, status: "RUNNING", startedAt: new Date() },
+          });
+          openStageLogId = log.id;
+        };
+
+        // feature 006 (pipeline configurável): `resumeStage` é gravado por
+        // `ExecutionsService.advance()` (etapa manual retomada) OU por
+        // `ExecutionsService.retry()` (mecanismo pré-existente de retomar
+        // direto no `implement`, agora unificado neste mesmo campo) — todas
+        // as etapas com índice MENOR que `resumeStage` em
+        // `DEVELOPER_STAGE_ORDER` já rodaram numa execução anterior desta
+        // mesma cadeia e são puladas aqui, sem repetir chamadas reais de IA
+        // nem duplicar `SpecificationVersion`/`TestCase`. `resumeState`
+        // carrega o que essas etapas puladas já produziram.
+        const stageOrder: readonly string[] = DEVELOPER_STAGE_ORDER;
+        const executionInput = (execution.input as Record<string, unknown> | null) ?? {};
+        const resumeStage = executionInput.resumeStage as string | undefined;
+        const carriedState = (executionInput.resumeState as DeveloperResumeState | undefined) ?? {};
+        const resumeIndex = resumeStage ? stageOrder.indexOf(resumeStage) : -1;
+        const shouldSkip = (stage: (typeof DEVELOPER_STAGE_ORDER)[number]) =>
+          resumeIndex >= 0 && stageOrder.indexOf(stage) < resumeIndex;
+
+        /**
+         * spec do pedido do usuário ("Eu ter a possibilidade de alterar se
+         * automática ou manual"): verifica `PipelineStageConfig` ANTES de
+         * cada uma das 9 etapas — se `MANUAL` (e esta execução não foi
+         * criada especificamente pra rodar esta etapa, via `resumeStage`),
+         * persiste `AWAITING_MANUAL_STAGE` + `resumeState` e lança
+         * `PipelinePausedSignal`, capturado no `catch` de `process()` sem
+         * marcar a execução como FAILED.
+         *
+         * bug encontrado ao vivo (live-validation finding): faltava o
+         * `shouldSkip(stage)` aqui — uma execução retomada em, digamos,
+         * "qa-generation" (`resumeStage`) só pulava o `gate` daquela ETAPA
+         * exata; se `implement` (uma etapa ANTERIOR, já concluída numa
+         * execução anterior desta cadeia) também estivesse configurada
+         * `MANUAL`, o gate pausava de novo ali — "Avançar etapa" parecia
+         * "voltar pra implementação" em vez de seguir pra QA. Qualquer
+         * etapa anterior ao ponto de retomada já foi efetivamente aprovada
+         * numa execução anterior da cadeia — nunca pausa de novo por ela.
+         */
+        const gate = async (
+          stage: (typeof DEVELOPER_STAGE_ORDER)[number],
+          buildResumeState: () => DeveloperResumeState,
+        ) => {
+          if (stage === resumeStage || shouldSkip(stage)) return;
+          const mode = await this.pipelineConfigService.getMode(stage);
+          if (mode !== "MANUAL") return;
+          await closeCurrentStageLog("COMPLETED");
+          await this.prisma.db.agentExecution.update({
+            where: { id: execution.id },
+            data: {
+              status: "AWAITING_MANUAL_STAGE",
+              pipelineStage: stage,
+              resumeState: { ...carriedState, ...buildResumeState() } as object,
+            },
+          });
+          throw new PipelinePausedSignal(stage);
+        };
 
         // follow-up: SPEC/PLAN reaching this point never went through the
         // generic per-stage execution branch below (its own
@@ -99,26 +212,39 @@ export class ExecutionsProcessor extends WorkerHost {
         // (spec Edge Cases), then clone it locally so "Modo B" (headless
         // Claude Code) has real files to edit, then implement, then record
         // file changes (DISCOVERED files get a justification — spec FR-017).
+        // branches/cloning/safety-check são baratas e idempotentes — mesmo
+        // retomando de uma etapa posterior, rodam de novo sempre (nunca
+        // puladas por `shouldSkip`); só o `gate()` (pausa manual) se aplica.
+        await gate("branches", () => ({}));
         await updateProgress("branches");
         await this.developerAgent.ensureBranchesForDemand(execution.demandId);
+
+        await gate("cloning", () => ({}));
         await updateProgress("cloning");
         await this.developerAgent.ensureRepositoriesCloned(execution.demandId, workspacePath);
+
         // security: cloned but not yet touched by the AI — the one moment
         // to refuse before the Developer Agent can read/act on production data.
+        await gate("safety-check", () => ({}));
         await updateProgress("safety-check");
         await this.developerAgent.enforceProductionSafety(execution.demandId, workspacePath);
 
-        // follow-up: snapshotted BEFORE `implement` runs so the post-implement
-        // auto-commit (below) can tell "changed by this run" apart from files
-        // that were already dirty in the working tree beforehand (e.g. local,
-        // unrelated edits) — never staged/committed automatically.
         const artifactRepoPaths = await this.developerAgent.resolveArtifactRepositoryPaths(
           execution.demandId,
           workspacePath,
         );
-        const dirtyBefore = await this.developerAgent.snapshotDirtyFiles(
-          artifactRepoPaths.map((link) => link.repoPath),
-        );
+        // follow-up: snapshotted BEFORE `implement` (na verdade, antes de
+        // tasks/analyze/checklist também — eles podem gravar arquivos no
+        // workspace) so the post-implement auto-commit (below) can tell
+        // "changed by this run" apart from files that were already dirty in
+        // the working tree beforehand. feature 006: se esta execução está
+        // retomando de uma etapa posterior, o snapshot original já foi
+        // capturado numa execução anterior desta cadeia — reaproveita do
+        // `resumeState` em vez de recalcular (recalcular aqui perderia o
+        // registro de arquivos já alterados por etapas anteriores puladas).
+        const dirtyBefore = carriedState.dirtyBefore
+          ? deserializeDirtyBefore(carriedState.dirtyBefore)
+          : await this.developerAgent.snapshotDirtyFiles(artifactRepoPaths.map((link) => link.repoPath));
 
         const context = await this.providerConfiguration.resolveSddContext(
           demand.projectId,
@@ -149,29 +275,19 @@ export class ExecutionsProcessor extends WorkerHost {
           planContent,
           demandTitle: demand.title,
         };
-        // follow-up: set by `ExecutionsService.retry()` when it determined
-        // this attempt is resuming a previous one whose tasks/analyze/
-        // checklist already succeeded (see resolveArtifactRepositoryLinks
-        // is unaffected — only these 3 Claude calls are skippable, since
-        // their output already sits in the workspace on disk and their
-        // SpecificationVersion rows already exist from the original run).
-        const resumeFromStage = (execution.input as Record<string, unknown> | null)?.resumeFromStage as
-          | string
-          | undefined;
-        const canSkipToImplement = resumeFromStage === "implement";
-
         // follow-up (live-validation finding): `/speckit-implement` refuses
         // to proceed without a `tasks.md` breakdown ("no tasks.md, please
         // run /speckit-tasks first"), and `/speckit-analyze` itself
         // requires `tasks.md` to already exist. Every developer execution
         // must run the full pre-implement SDD chain — not just spec/plan —
         // regardless of whether spec/plan came from a real pipeline run or
-        // a manual upload. UNLESS resuming (canSkipToImplement) — then
-        // tasks.md/analysis.md/checklists/*.md already exist in the
-        // workspace from the original attempt, and their
-        // SpecificationVersion rows already exist too — just re-mark the
-        // stages as visited (fast) without calling Claude again.
-        if (!canSkipToImplement) {
+        // a manual upload. UNLESS retomando de uma etapa posterior
+        // (`shouldSkip`) — então tasks.md/analysis.md/checklists/*.md já
+        // existem no workspace de uma execução anterior desta cadeia, e
+        // seus `SpecificationVersion` já existem também — pula sem chamar
+        // Claude de novo.
+        await gate("tasks", () => ({ dirtyBefore: serializeDirtyBefore(dirtyBefore) }));
+        if (!shouldSkip("tasks")) {
           await updateProgress("tasks");
           const tasksResult = await this.sddProvider.tasks({
             demandId: execution.demandId,
@@ -180,7 +296,10 @@ export class ExecutionsProcessor extends WorkerHost {
             executionId: execution.id,
           });
           await this.writeSpecificationVersion(execution, "tasks", tasksResult.content);
+        }
 
+        await gate("analyze", () => ({ dirtyBefore: serializeDirtyBefore(dirtyBefore) }));
+        if (!shouldSkip("analyze")) {
           await updateProgress("analyze");
           const analyzeResult = await this.sddProvider.analyze({
             demandId: execution.demandId,
@@ -189,7 +308,10 @@ export class ExecutionsProcessor extends WorkerHost {
             executionId: execution.id,
           });
           await this.writeSpecificationVersion(execution, "analyze", analyzeResult.content);
+        }
 
+        await gate("checklist", () => ({ dirtyBefore: serializeDirtyBefore(dirtyBefore) }));
+        if (!shouldSkip("checklist")) {
           await updateProgress("checklist");
           const checklistResult = await this.sddProvider.checklist({
             demandId: execution.demandId,
@@ -200,38 +322,82 @@ export class ExecutionsProcessor extends WorkerHost {
           await this.writeSpecificationVersion(execution, "checklist", checklistResult.content);
         }
 
-        await updateProgress("implement");
-        const result = await this.sddProvider.implement({
-          demandId: execution.demandId,
-          workspacePath,
-          context: sddContext,
-          executionId: execution.id,
-        });
+        await gate("implement", () => ({ dirtyBefore: serializeDirtyBefore(dirtyBefore) }));
+        let result: ImplementationResult;
+        let postImplementNote: {
+          hasUnassistedNote?: boolean;
+          unassistedNoteExcerpt?: string | null;
+          specVersionId?: string;
+          tasksVersionId?: string;
+        };
+        if (!shouldSkip("implement")) {
+          await updateProgress("implement");
+          result = await this.sddProvider.implement({
+            demandId: execution.demandId,
+            workspacePath,
+            context: sddContext,
+            executionId: execution.id,
+          });
 
-        const [firstArtifact] = await this.prisma.db.artifact.findMany({
-          where: { demandId: execution.demandId },
-          take: 1,
-        });
-        if (firstArtifact && result.filesChanged.length > 0) {
-          // NOTE: SpecKitProvider.implement() reports files changed for the
-          // whole demand, not per artifact — attributing them all to the
-          // first artifact is a known simplification until the SDD
-          // integration reports artifact-scoped results.
-          await this.developerAgent.recordImplementationFiles(
-            execution.demandId,
-            firstArtifact.id,
-            result.filesChanged,
-          );
+          const [firstArtifact] = await this.prisma.db.artifact.findMany({
+            where: { demandId: execution.demandId },
+            take: 1,
+          });
+          if (firstArtifact && result.filesChanged.length > 0) {
+            // NOTE: SpecKitProvider.implement() reports files changed for the
+            // whole demand, not per artifact — attributing them all to the
+            // first artifact is a known simplification until the SDD
+            // integration reports artifact-scoped results.
+            await this.developerAgent.recordImplementationFiles(
+              execution.demandId,
+              firstArtifact.id,
+              result.filesChanged,
+            );
+          }
+
+          // follow-up: `/speckit-implement` is the only stage that can rewrite
+          // spec.md/tasks.md AFTER they were already generated (e.g. to record
+          // an assumption it had to make with no analyst available) — never
+          // persisted anywhere before this, only ever on the workspace's own
+          // disk. Isolated in its own try/catch (see the method itself) so a
+          // bug here can never turn a genuinely successful `implement` into a
+          // FAILED execution.
+          postImplementNote = await this.persistPostImplementSnapshots(execution, result);
+        } else {
+          // feature 006: `implement` já rodou numa execução anterior desta
+          // cadeia — reaproveita o resultado carregado em `resumeState` em
+          // vez de rodar `/speckit-implement` de novo (custaria minutos de
+          // subprocesso real e poderia reimplementar por cima do que já foi
+          // feito).
+          result = carriedState.implementResult as ImplementationResult;
+          postImplementNote = carriedState.postImplementNote ?? {};
         }
 
-        // follow-up: `/speckit-implement` is the only stage that can rewrite
-        // spec.md/tasks.md AFTER they were already generated (e.g. to record
-        // an assumption it had to make with no analyst available) — never
-        // persisted anywhere before this, only ever on the workspace's own
-        // disk. Isolated in its own try/catch (see the method itself) so a
-        // bug here can never turn a genuinely successful `implement` into a
-        // FAILED execution.
-        const postImplementNote = await this.persistPostImplementSnapshots(execution, result);
+        // spec User Story 1 (FR-001/FR-003): o Agente QA (Agent.type = "qa")
+        // roda como um novo estágio dentro desta MESMA AgentExecution
+        // "developer", entre `implement` e `commit` — geração obrigatória;
+        // uma falha genuína aqui propaga para o catch abaixo e bloqueia o
+        // Commit (o loop de commit nunca é alcançado), exatamente como o
+        // Test Gate já existente. Ausência de cenário aplicável (generated:
+        // 0) NÃO é uma falha — segue normalmente. Extrai os Casos de Teste
+        // diretamente do spec.md já aprovado (Acceptance Scenarios/Edge
+        // Cases) — sem chamar nenhum LLM (research.md decisão 9).
+        await gate("qa-generation", () => ({
+          dirtyBefore: serializeDirtyBefore(dirtyBefore),
+          implementResult: result,
+          postImplementNote,
+        }));
+        let qaResult: GenerateTestCasesResult;
+        if (!shouldSkip("qa-generation")) {
+          await updateProgress("qa-generation");
+          qaResult = await this.qaGenerationService.generateTestCases({
+            demandId: execution.demandId,
+            executionId: execution.id,
+            specContent,
+          });
+        } else {
+          qaResult = carriedState.qaResult as GenerateTestCasesResult;
+        }
 
         // follow-up: commits+pushes only the files that became dirty DURING
         // this run (per-repo diff against the `dirtyBefore` snapshot) — a
@@ -239,6 +405,12 @@ export class ExecutionsProcessor extends WorkerHost {
         // changes (production-URL sanitization from an earlier run) sitting
         // in the same working tree; a naive "commit everything dirty" would
         // have swept those into this feature's commit.
+        await gate("commit", () => ({
+          dirtyBefore: serializeDirtyBefore(dirtyBefore),
+          implementResult: result,
+          postImplementNote,
+          qaResult,
+        }));
         await updateProgress("commit");
         const dirtyAfter = await this.developerAgent.snapshotDirtyFiles(
           artifactRepoPaths.map((link) => link.repoPath),
@@ -275,12 +447,37 @@ export class ExecutionsProcessor extends WorkerHost {
           }
         }
 
+        await closeCurrentStageLog("COMPLETED");
         await this.setTerminalStatus(execution.id, {
           status: "COMPLETED",
           finishedAt: new Date(),
-          output: { ...result, commits: commitResults, ...postImplementNote },
+          output: { ...result, commits: commitResults, qa: qaResult, ...postImplementNote },
         });
         await this.workflows.advanceToStage(execution.demandId, "TESTING");
+        return;
+      }
+
+      if (execution.agent.type === "qa") {
+        // feature 006: disparo manual, pela tela Agentes, para gerar Casos
+        // de Teste em demandas que já foram implementadas ANTES desta
+        // feature existir (spec Assumptions) — reaproveita a MESMA
+        // QaGenerationService do branch "developer" acima, sem repetir o
+        // /speckit-implement inteiro. Não avança Demand.status/workflow,
+        // mesma decisão já tomada pra geração automática. Extrai direto do
+        // spec.md já aprovado (Acceptance Scenarios/Edge Cases) — sem LLM.
+        const { specContent } = await this.developerAgent.resolveCurrentSpecAndPlanContent(execution.demandId);
+
+        const result = await this.qaGenerationService.generateTestCases({
+          demandId: execution.demandId,
+          executionId: execution.id,
+          specContent,
+        });
+
+        await this.setTerminalStatus(execution.id, {
+          status: "COMPLETED",
+          finishedAt: new Date(),
+          output: result,
+        });
         return;
       }
 
@@ -356,7 +553,20 @@ export class ExecutionsProcessor extends WorkerHost {
 
       await this.workflows.advanceToNextStage(execution.demandId);
     } catch (error) {
+      // feature 006 (pipeline configurável): pausa por etapa manual — NÃO é
+      // uma falha. `gate()` já persistiu AWAITING_MANUAL_STAGE + resumeState
+      // antes de lançar; aqui só encerra o job sem marcar FAILED nem
+      // propagar (BullMQ não deve tentar de novo — é esperado ficar parado
+      // até "Avançar etapa").
+      if (error instanceof PipelinePausedSignal) {
+        this.logger.log(`Execution ${execution.id} paused before manual stage "${error.stage}"`);
+        return;
+      }
       this.logger.error(`Execution ${execution.id} failed`, error as Error);
+      await this.prisma.db.executionStageLog.updateMany({
+        where: { executionId: execution.id, status: "RUNNING" },
+        data: { status: "FAILED", finishedAt: new Date() },
+      });
       await this.setTerminalStatus(execution.id, {
         status: "FAILED",
         finishedAt: new Date(),

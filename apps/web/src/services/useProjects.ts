@@ -17,6 +17,7 @@ export function useCreateProject() {
       name: string;
       technologies?: string[];
       requiredTestSuites?: string[];
+      qaAutoExecutionEnabled?: boolean;
     }) => apiPost<Project>("/projects", input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
   });
@@ -35,6 +36,7 @@ export function useUpdateProject() {
       branchNamingPolicy?: string;
       requiredTestSuites?: string[];
       constitution?: string;
+      qaAutoExecutionEnabled?: boolean;
     }) => apiPatch<Project>(`/projects/${id}`, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
   });

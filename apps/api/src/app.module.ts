@@ -29,6 +29,8 @@ import { RolesModule } from "./modules/roles/roles.module";
 import { SystemsModule } from "./modules/systems/systems.module";
 import { DependencyAnalyzerModule } from "./modules/dependency-analyzer/dependency-analyzer.module";
 import { GovernanceModule } from "./modules/governance/governance.module";
+import { QaModule } from "./modules/qa/qa.module";
+import { PipelineConfigModule } from "./modules/pipeline-config/pipeline-config.module";
 
 @Module({
   imports: [
@@ -57,6 +59,8 @@ import { GovernanceModule } from "./modules/governance/governance.module";
     SystemsModule,
     DependencyAnalyzerModule,
     GovernanceModule,
+    QaModule,
+    PipelineConfigModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

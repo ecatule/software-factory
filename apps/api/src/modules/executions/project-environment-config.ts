@@ -106,6 +106,19 @@ interface ProjectEnvironmentConfig {
    * files that ARE otherwise sanitized/scanned.
    */
   excludedFiles?: string[];
+  /**
+   * feature 006 (spec FR-012/FR-013, research.md §5): a ÚNICA fonte de
+   * verdade sobre "o que é homologação" para este Projeto, usada pelo
+   * EnvironmentGuard (apps/api/src/modules/qa/environment-guard.service.ts)
+   * — comparação determinística de string, nunca uma decisão da IA. Mesmo
+   * arquivo/mecanismo já usado acima para produção, em vez de um mecanismo
+   * paralelo (ex.: uma variável de ambiente global) — este projeto já é
+   * multi-cliente, cada um com sua própria URL de homologação.
+   */
+  homologationEnvironment?: {
+    applicationUrl?: string;
+    apiUrl?: string;
+  };
 }
 
 /**
@@ -170,4 +183,34 @@ export async function loadProjectExcludedFiles(projectId: string): Promise<strin
 
   const config = JSON.parse(raw) as ProjectEnvironmentConfig;
   return config.excludedFiles ?? [];
+}
+
+/**
+ * Returns `undefined` when no config file exists for this Project, OR when
+ * it exists but is malformed/unreadable — `EnvironmentGuard` treats both
+ * the same way, as "nothing configured" (deny by default, spec Edge Cases:
+ * a Project that was never given a homologation config is not "authorized
+ * by default", same as one with genuinely incomplete credentials). Unlike
+ * the loaders above, this one deliberately catches a JSON parse failure too
+ * — those loaders' callers already have their own separate block-by-default
+ * fallback for a missing rule; this one is the ONLY signal EnvironmentGuard
+ * has, so it must fail closed on its own.
+ */
+export async function loadProjectHomologationEnvironment(
+  projectId: string,
+): Promise<{ applicationUrl?: string; apiUrl?: string } | undefined> {
+  const filePath = path.join(PROJECT_ENV_CONFIG_DIR, `${projectId}.json`);
+  let raw: string;
+  try {
+    raw = await readFile(filePath, "utf-8");
+  } catch {
+    return undefined;
+  }
+
+  try {
+    const config = JSON.parse(raw) as ProjectEnvironmentConfig;
+    return config.homologationEnvironment;
+  } catch {
+    return undefined;
+  }
 }

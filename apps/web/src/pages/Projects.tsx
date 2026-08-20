@@ -20,6 +20,7 @@ interface ProjectFormValues {
   name: string;
   requiredTestSuites: string;
   constitution: string;
+  qaAutoExecutionEnabled: boolean;
 }
 
 function splitSuites(value: string): string[] {
@@ -62,6 +63,7 @@ export function Projects() {
       name: "",
       requiredTestSuites: "",
       constitution: "",
+      qaAutoExecutionEnabled: false,
     });
     setSaveError(null);
     setIsCreating(true);
@@ -73,6 +75,7 @@ export function Projects() {
       name: project.name,
       requiredTestSuites: project.requiredTestSuites.join(", "),
       constitution: project.constitution ?? "",
+      qaAutoExecutionEnabled: project.qaAutoExecutionEnabled,
     });
     setSaveError(null);
     setEditing(project);
@@ -88,6 +91,7 @@ export function Projects() {
           name: values.name,
           requiredTestSuites,
           constitution: values.constitution,
+          qaAutoExecutionEnabled: values.qaAutoExecutionEnabled,
         });
         setEditing(null);
       } else {
@@ -95,6 +99,7 @@ export function Projects() {
           clientId: values.clientId,
           name: values.name,
           requiredTestSuites,
+          qaAutoExecutionEnabled: values.qaAutoExecutionEnabled,
         });
         setIsCreating(false);
       }
@@ -169,6 +174,15 @@ export function Projects() {
             label="Suítes de teste obrigatórias (separadas por vírgula)"
             registration={register("requiredTestSuites")}
           />
+          <label className="flex items-center gap-2 text-sm text-foreground">
+            <input
+              type="checkbox"
+              className="size-4 rounded border-input accent-primary"
+              {...register("qaAutoExecutionEnabled")}
+            />
+            Execução automática de testes habilitada (padrão: desabilitada — QA gera e disponibiliza Casos de
+            Teste normalmente de qualquer forma; só a execução automática depende deste campo)
+          </label>
           {editing && (
             <div className="flex flex-col gap-1.5">
               <label htmlFor="constitution" className="text-sm font-medium text-foreground">

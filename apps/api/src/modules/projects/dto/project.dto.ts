@@ -1,4 +1,4 @@
-import { IsArray, IsOptional, IsString, IsUUID } from "class-validator";
+import { IsArray, IsBoolean, IsOptional, IsString, IsUUID } from "class-validator";
 
 export class CreateProjectDto {
   @IsUUID()
@@ -14,6 +14,11 @@ export class CreateProjectDto {
   @IsArray()
   @IsOptional()
   requiredTestSuites?: string[];
+
+  /** feature 006 (spec FR-008/FR-009): padrão desabilitada — controlada por Prisma @default(false), não aqui. */
+  @IsOptional()
+  @IsBoolean()
+  qaAutoExecutionEnabled?: boolean;
 }
 
 export class UpdateProjectDto {
@@ -37,4 +42,9 @@ export class UpdateProjectDto {
   @IsOptional()
   @IsString()
   constitution?: string;
+
+  /** feature 006 (spec FR-008/FR-009): alterar esta configuração é sempre uma ação explícita deste formulário — nenhuma outra ação do sistema muda esse valor como efeito colateral. */
+  @IsOptional()
+  @IsBoolean()
+  qaAutoExecutionEnabled?: boolean;
 }

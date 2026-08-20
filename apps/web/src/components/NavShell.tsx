@@ -20,6 +20,7 @@ import {
   PlayCircle,
   Rocket,
   Settings as SettingsIcon,
+  Workflow,
   ShieldCheck,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -75,6 +76,12 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "GMUD", to: "/governance/gmud", icon: Rocket, permission: "GMUD_READ" },
       { label: "Auditoria", to: "/audit", icon: ShieldCheck, permission: "AUDIT_READ" },
       { label: "Logs de Erro", to: "/error-logs", icon: AlertTriangle, permission: "ERROR_LOG_READ" },
+      {
+        label: "Configuração do Pipeline",
+        to: "/pipeline-config",
+        icon: Workflow,
+        permission: "PIPELINE_CONFIG_WRITE",
+      },
       { label: "Configurações", to: "/settings", icon: SettingsIcon, roles: ["admin"] },
     ],
   },

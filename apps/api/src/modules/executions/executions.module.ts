@@ -9,6 +9,8 @@ import { IncrementsModule } from "../increments/increments.module";
 // importing GitModule directly would be circular (GitModule used to import
 // ExecutionsModule just for DeveloperAgentService).
 import { GitModule } from "../git/git.module";
+import { QaModule } from "../qa/qa.module";
+import { PipelineConfigModule } from "../pipeline-config/pipeline-config.module";
 import { DeveloperAgentModule } from "./developer-agent.module";
 import { ExecutionsController } from "./executions.controller";
 import { ExecutionsService } from "./executions.service";
@@ -23,6 +25,8 @@ import { ExecutionsProcessor } from "./executions.processor";
     IncrementsModule,
     DeveloperAgentModule,
     GitModule,
+    QaModule,
+    PipelineConfigModule,
   ],
   controllers: [ExecutionsController],
   providers: [ExecutionsService, ExecutionsProcessor],

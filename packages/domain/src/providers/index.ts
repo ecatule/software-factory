@@ -6,3 +6,4 @@ export * from "./code-repository-provider";
 export * from "./storage-provider";
 export * from "./graph-store-provider";
 export * from "./specification-proposal";
+export * from "./test-executor-provider";

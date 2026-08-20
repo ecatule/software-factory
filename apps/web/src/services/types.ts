@@ -131,4 +131,6 @@ export interface Project {
   version: number;
   /** follow-up: `.specify/memory/constitution.md` content applied to every demand's workspace before any SDD stage runs. */
   constitution: string | null;
+  /** feature 006 (spec FR-008/FR-009): padrão desabilitada — controla se a execução automática de testes pode ocorrer como parte do pipeline deste Projeto. */
+  qaAutoExecutionEnabled: boolean;
 }

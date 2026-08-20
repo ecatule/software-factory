@@ -15,10 +15,28 @@ const WORKFLOW_STAGES = [
   "TESTING",
   "COMMIT",
   "PULL_REQUEST",
+  // feature 006 (data-model.md "Demand.status"): extensão do fluxo de QA/teste
+  // funcional — nenhuma automação de transição para estes estados nesta
+  // rodada (spec Assumptions), servem para exibição/rastreio; avanço
+  // continua manual onde já é manual hoje (PR, GMUD).
+  "IMPLEMENTED",
+  "TESTS_GENERATED",
+  "PR_CREATED",
+  "PR_APPROVED",
+  "GMUD_CREATED",
+  "DEPLOYED_HOMOLOGATION",
+  "READY_FOR_FUNCTIONAL_TEST",
+  "FUNCTIONAL_TESTING",
+  "FUNCTIONAL_TEST_PASSED",
+  "FUNCTIONAL_TEST_FAILED",
+  "READY_FOR_PRODUCTION",
   "BLOCKED",
   "FAILED",
   "CANCELLED",
 ] as const;
+
+/** feature 006: excluded from the straight-line chain below — exception/failure branches, not a "next step" in the happy path. */
+const WORKFLOW_EXCEPTION_STAGES = ["BLOCKED", "FAILED", "CANCELLED", "FUNCTIONAL_TEST_FAILED"];
 
 // feature 004 (spec FR-004): granular permissions, all granted to the
 // `admin` role by default (FR-008) so no admin loses access already held.
@@ -49,6 +67,15 @@ const PERMISSION_CATALOG = [
   // GMUD (Gestão de Mudanças): open a deploy request on Monday / read past requests.
   "GMUD_WRITE",
   "GMUD_READ",
+  // feature 006 (spec Clarification #2): QA_EXECUTE mantida separada de
+  // AGENT_EXECUTE — dispara execução real contra um ambiente de homologação,
+  // não apenas geração de código.
+  "QA_READ",
+  "QA_EXECUTE",
+  // feature 006 (pipeline configurável): controla quem pode mudar se uma
+  // etapa do pipeline "developer" roda automaticamente ou exige um clique
+  // manual — afeta TODA execução da plataforma, não só uma demanda.
+  "PIPELINE_CONFIG_WRITE",
 ] as const;
 
 const PROVIDER_CATALOG: { key: string; kind: ProviderKind }[] = [
@@ -106,36 +133,43 @@ async function seedIdentity() {
   });
 }
 
+/** feature 006: was create-only-if-missing (never touched an existing workflow again) — rewritten as an upsert per stage/transition so re-running seed can add newly appended WORKFLOW_STAGES entries to an already-seeded "default" workflow without duplicating what's already there. */
 async function seedDefaultWorkflow() {
-  const existing = await prisma.workflow.findFirst({
-    where: { name: "default", projectId: null },
+  const workflow =
+    (await prisma.workflow.findFirst({ where: { name: "default", projectId: null } })) ??
+    (await prisma.workflow.create({ data: { name: "default", projectId: null } }));
+
+  const stages = [];
+  for (let index = 0; index < WORKFLOW_STAGES.length; index += 1) {
+    const key = WORKFLOW_STAGES[index];
+    stages.push(
+      await prisma.workflowStage.upsert({
+        where: { workflowId_key: { workflowId: workflow.id, key } },
+        update: { order: index },
+        create: { workflowId: workflow.id, key, order: index },
+      }),
+    );
+  }
+
+  const linear = stages.filter((s) => !WORKFLOW_EXCEPTION_STAGES.includes(s.key));
+  for (let i = 0; i < linear.length - 1; i += 1) {
+    await ensureWorkflowTransition(workflow.id, linear[i].id, linear[i + 1].id);
+  }
+
+  // feature 006: FUNCTIONAL_TESTING can also end in failure, not only PASSED.
+  const functionalTesting = stages.find((s) => s.key === "FUNCTIONAL_TESTING");
+  const functionalTestFailed = stages.find((s) => s.key === "FUNCTIONAL_TEST_FAILED");
+  if (functionalTesting && functionalTestFailed) {
+    await ensureWorkflowTransition(workflow.id, functionalTesting.id, functionalTestFailed.id);
+  }
+}
+
+async function ensureWorkflowTransition(workflowId: string, fromStageId: string, toStageId: string) {
+  const existing = await prisma.workflowTransition.findFirst({
+    where: { workflowId, fromStageId, toStageId },
   });
   if (existing) return;
-
-  const workflow = await prisma.workflow.create({
-    data: { name: "default", projectId: null },
-  });
-
-  const stages = await Promise.all(
-    WORKFLOW_STAGES.map((key, index) =>
-      prisma.workflowStage.create({
-        data: { workflowId: workflow.id, key, order: index },
-      }),
-    ),
-  );
-
-  const linear = stages.filter(
-    (s) => !["BLOCKED", "FAILED", "CANCELLED"].includes(s.key),
-  );
-  for (let i = 0; i < linear.length - 1; i += 1) {
-    await prisma.workflowTransition.create({
-      data: {
-        workflowId: workflow.id,
-        fromStageId: linear[i].id,
-        toStageId: linear[i + 1].id,
-      },
-    });
-  }
+  await prisma.workflowTransition.create({ data: { workflowId, fromStageId, toStageId } });
 }
 
 async function seedProviders() {
@@ -156,6 +190,10 @@ const AGENT_CATALOG = [
   // feature 003: ExecutionsProcessor's `agent.type === "specification_copilot"`
   // branch (the AI-assisted specification round).
   { name: "SpecificationCopilotAgent", type: "specification_copilot" },
+  // feature 006 (spec FR-018/research.md §3): novo estágio dentro da MESMA
+  // AgentExecution do tipo "developer" (ExecutionsProcessor), entre
+  // `implement` e `commit` — não um worker/fila separado.
+  { name: "QA Agent", type: "qa" },
 ];
 
 async function seedAgents() {
@@ -167,11 +205,37 @@ async function seedAgents() {
   }
 }
 
+// feature 006 (pipeline configurável): as 9 etapas do branch "developer" em
+// ExecutionsProcessor, na mesma ordem em que rodam — todas "AUTO" por
+// padrão, preservando o comportamento já existente.
+const PIPELINE_STAGES_CATALOG = [
+  "branches",
+  "cloning",
+  "safety-check",
+  "tasks",
+  "analyze",
+  "checklist",
+  "implement",
+  "qa-generation",
+  "commit",
+];
+
+async function seedPipelineStageConfig() {
+  for (const stage of PIPELINE_STAGES_CATALOG) {
+    await prisma.pipelineStageConfig.upsert({
+      where: { stage },
+      update: {},
+      create: { stage, mode: "AUTO" },
+    });
+  }
+}
+
 async function main() {
   await seedIdentity();
   await seedDefaultWorkflow();
   await seedProviders();
   await seedAgents();
+  await seedPipelineStageConfig();
 }
 
 main()

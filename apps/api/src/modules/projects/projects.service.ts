@@ -27,6 +27,7 @@ export class ProjectsService {
         name: dto.name,
         technologies: dto.technologies ?? [],
         requiredTestSuites: dto.requiredTestSuites ?? [],
+        qaAutoExecutionEnabled: dto.qaAutoExecutionEnabled ?? false,
       },
     });
   }

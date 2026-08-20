@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { DataTable, Modal, Pagination, Badge, MarkdownEditor } from "@software-factory/ui";
 import type { ColumnDef } from "@tanstack/react-table";
-import { FileText, RefreshCw, RotateCcw, XCircle } from "lucide-react";
+import { ChevronRight, FileText, RefreshCw, RotateCcw, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/select";
 import { useAuth } from "../context/AuthContext";
@@ -9,14 +9,16 @@ import {
   executionStatusLabel,
   pipelineStageLabel,
   readDeveloperOutput,
+  useAdvanceExecution,
   useCancelExecution,
   useExecution,
+  useExecutionStages,
   useExecutionsList,
   useRetryExecution,
   type Execution,
 } from "../services/useExecutions";
 
-const CANCELLABLE_STATUSES = new Set<Execution["status"]>(["QUEUED", "RUNNING"]);
+const CANCELLABLE_STATUSES = new Set<Execution["status"]>(["QUEUED", "RUNNING", "AWAITING_MANUAL_STAGE"]);
 
 const STATUS_TONE: Record<Execution["status"], "neutral" | "success" | "warning" | "danger"> = {
   QUEUED: "neutral",
@@ -24,6 +26,7 @@ const STATUS_TONE: Record<Execution["status"], "neutral" | "success" | "warning"
   COMPLETED: "success",
   FAILED: "danger",
   CANCELLED: "neutral",
+  AWAITING_MANUAL_STAGE: "warning",
 };
 
 function formatDateTime(value: string | null): string {
@@ -40,7 +43,9 @@ export function Executions() {
   const [openExecutionId, setOpenExecutionId] = useState<string | null>(null);
   const [viewingDocument, setViewingDocument] = useState<{ title: string; content: string } | null>(null);
   const retryExecution = useRetryExecution();
+  const advanceExecution = useAdvanceExecution();
   const cancelExecution = useCancelExecution();
+  const executionStages = useExecutionStages(openExecutionId);
   // follow-up: `pipelineStage` is updated live server-side as the
   // "developer" agent's multi-step pipeline (branches/cloning/safety-check/
   // tasks/analyze/checklist/implement) progresses — but this screen no
@@ -154,6 +159,22 @@ export function Executions() {
                 <XCircle /> Cancelar
               </Button>
             )}
+            {openExecution.data.status === "AWAITING_MANUAL_STAGE" && hasPermission("AGENT_EXECUTE") && (
+              <div className="flex flex-col gap-1 self-start">
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={advanceExecution.isPending}
+                  onClick={() => advanceExecution.mutate(openExecution.data!.id)}
+                >
+                  <ChevronRight /> Avançar etapa
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  Pausada antes de "{pipelineStageLabel(openExecution.data.pipelineStage)}" — configurada como
+                  manual em Configuração do Pipeline.
+                </span>
+              </div>
+            )}
             {(openExecution.data.status === "FAILED" || openExecution.data.status === "COMPLETED") &&
               hasPermission("AGENT_EXECUTE") && (
                 <Button
@@ -221,6 +242,29 @@ export function Executions() {
                 </div>
               );
             })()}
+            {!!executionStages.data?.length && (
+              <div className="flex flex-col gap-2">
+                <h3 className="text-sm font-semibold text-foreground">Linha do tempo das etapas</h3>
+                <ul className="flex flex-col gap-1">
+                  {executionStages.data.map((log) => {
+                    const durationMs = log.finishedAt
+                      ? new Date(log.finishedAt).getTime() - new Date(log.startedAt).getTime()
+                      : null;
+                    return (
+                      <li key={log.id} className="flex items-center gap-2 text-sm">
+                        <span>
+                          {log.status === "COMPLETED" ? "✓" : log.status === "FAILED" ? "✗" : "⏳"}
+                        </span>
+                        <span className="text-foreground">{pipelineStageLabel(log.stage)}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {durationMs !== null ? `(${Math.round(durationMs / 1000)}s)` : "(em andamento)"}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
             <h3 className="text-sm font-semibold text-foreground">Entrada</h3>
             <pre className="overflow-x-auto rounded-md bg-secondary p-3 text-xs text-foreground">
               {JSON.stringify(openExecution.data.input, null, 2)}

@@ -24,6 +24,7 @@ export class DashboardService {
       byClientRaw,
       avgTimePerStage,
       dailyActivity,
+      demandsReadyForProduction,
     ] = await Promise.all([
       this.prisma.db.demand.groupBy({ by: ["status"], _count: { status: true } }),
       this.prisma.db.demand.findMany({ orderBy: { updatedAt: "desc" }, take: recentLimit }),
@@ -34,6 +35,7 @@ export class DashboardService {
       this.prisma.db.demand.groupBy({ by: ["clientId"], _count: { clientId: true } }),
       this.computeAvgTimePerStage(),
       this.computeDailyActivity(),
+      this.countReadyForProduction(),
     ]);
 
     const countByStatuses = (statuses: string[]) =>
@@ -66,7 +68,46 @@ export class DashboardService {
       })),
       avgTimePerStage,
       dailyActivity,
+      demandsReadyForProduction,
     };
+  }
+
+  /**
+   * feature 006 (spec FR-015): mesma regra de `isReadyForProduction`, em
+   * lote — usada aqui só pela contagem do resumo do dashboard, sem repetir
+   * uma query por demanda.
+   */
+  private async countReadyForProduction(): Promise<number> {
+    const candidates = await this.prisma.db.demand.findMany({
+      where: { status: "READY_FOR_PRODUCTION" },
+      select: { id: true },
+    });
+    if (candidates.length === 0) return 0;
+
+    const failing = await this.prisma.db.functionalTestExecution.findMany({
+      where: { demandId: { in: candidates.map((c) => c.id) }, status: "FAIL" },
+      select: { demandId: true },
+    });
+    const failingDemandIds = new Set(failing.map((f) => f.demandId));
+    return candidates.filter((c) => !failingDemandIds.has(c.id)).length;
+  }
+
+  /**
+   * feature 006 (spec FR-015): "nenhuma demanda com pelo menos um resultado
+   * de teste funcional em FAIL DEVE ser apresentada como pronta para
+   * produção" — independente do `Demand.status` já ler
+   * `READY_FOR_PRODUCTION` (nenhuma automação define esse estado sozinha
+   * hoje, spec Assumptions; isto é o predicado que qualquer leitura de
+   * "está pronta?" deve consultar).
+   */
+  async isReadyForProduction(demandId: string): Promise<boolean> {
+    const demand = await this.prisma.db.demand.findUniqueOrThrow({ where: { id: demandId } });
+    if (demand.status !== "READY_FOR_PRODUCTION") return false;
+
+    const failingExecution = await this.prisma.db.functionalTestExecution.findFirst({
+      where: { demandId, status: "FAIL" },
+    });
+    return !failingExecution;
   }
 
   /**

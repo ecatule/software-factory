@@ -5,3 +5,7 @@ export * from "./providers/claude.provider";
 export * from "./providers/speckit.provider";
 export * from "./providers/github-repository.provider";
 export * from "./providers/neo4j-graph-store.provider";
+export * from "./providers/api-test-executor.provider";
+export * from "./providers/unit-test-executor.provider";
+export * from "./providers/browser-test-executor.provider";
+export * from "./providers/composite-test-executor.provider";
