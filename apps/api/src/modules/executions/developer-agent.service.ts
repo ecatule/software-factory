@@ -126,15 +126,69 @@ export class DeveloperAgentService {
 
     for (const link of links) {
       const targetPath = this.resolveClonePath(workspacePath, link.externalReference);
+      const alreadyCloned = await this.pathExists(path.join(targetPath, ".git"));
 
-      if (!(await this.pathExists(path.join(targetPath, ".git")))) {
+      if (!alreadyCloned) {
         await this.codeRepositoryProvider.cloneRepository(link.externalReference, targetPath);
       }
 
       const branchName = branchNameByArtifact.get(link.artifactId);
       if (branchName) {
         await this.codeRepositoryProvider.checkoutBranch(targetPath, branchName);
+        // follow-up (live-validation finding): a clone REAPROVEITADA de uma
+        // execução anterior nunca era atualizada com o que está no remoto —
+        // se alguém empurrou um ajuste manual direto na branch (fora da
+        // plataforma) entre duas execuções da mesma demanda, o Developer
+        // Agent trabalhava sobre código desatualizado, sem nenhum sinal
+        // disso. Um clone recém-criado (`!alreadyCloned`) já está em dia
+        // por definição — não precisa disso.
+        if (alreadyCloned) {
+          await this.syncExistingBranchWithRemote(demandId, link.artifactId, targetPath, branchName);
+        }
       }
+    }
+  }
+
+  /**
+   * follow-up: `git fetch` + fast-forward (`--ff-only`) — NUNCA `reset
+   * --hard`. Esta mesma plataforma já tem um cenário confirmado de commits
+   * locais feitos via shell que nunca chegaram a ser enviados
+   * (`detectUnpushedCommits`/`pushPendingCommits` logo abaixo) — um reset
+   * destrutivo apagaria esse trabalho local silenciosamente. Fast-forward
+   * só avança a branch local quando isso NUNCA descarta um commit local:
+   * se a branch local tiver algo que a remota não tem, o merge falha
+   * sozinho (git recusa) — aqui só registramos isso em AuditLog, sem tentar
+   * resolver automaticamente nem bloquear a execução (o mesmo cenário já
+   * tem sua própria UI de resolução, na aba Git da demanda).
+   */
+  private async syncExistingBranchWithRemote(
+    demandId: string,
+    artifactId: string,
+    targetPath: string,
+    branchName: string,
+  ): Promise<void> {
+    try {
+      await execAsync(`git fetch origin ${branchName}`, { cwd: targetPath });
+    } catch {
+      return; // branch remota ainda não existe, sem rede, etc. — nada pra sincronizar
+    }
+
+    try {
+      await execAsync(`git merge --ff-only origin/${branchName}`, { cwd: targetPath });
+    } catch {
+      await this.prisma.db.auditLog.create({
+        data: {
+          action: "PRE_IMPLEMENT_BRANCH_SYNC_SKIPPED",
+          entityType: "artifacts",
+          entityId: artifactId,
+          after: {
+            demandId,
+            branchName,
+            reason: "local branch has commits not present on origin — fast-forward not possible",
+          },
+          correlationId: randomUUID(),
+        },
+      });
     }
   }
 
